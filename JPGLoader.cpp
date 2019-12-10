@@ -169,3 +169,23 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 
 	return image;
 }
+
+void JPGLoader::createSign(signSet* sig, unsigned char* L, unsigned char* V) {
+	unsigned int firstNumBit = 0;
+	while (L[firstNumBit++] == 0);
+	firstNumBit--;
+	const static char numL = 16;
+	unsigned short sign = 0;
+	unsigned int vInd = 0;
+	unsigned char numBit = firstNumBit;
+	for (unsigned char i = firstNumBit; i < numL; i++) {
+		if (L[i] <= 0)continue;
+		sign = sign << (i - numBit);
+		for (unsigned char j = 0; j < L[i]; j++) {
+			sig[vInd].sign = sign++;
+			sig[vInd].valBit = V[vInd];
+			vInd++;
+		}
+		numBit = i;
+	}
+}

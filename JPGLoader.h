@@ -75,7 +75,7 @@ private:
 	public:
 		unsigned char Tcn = 0;//上位4bit ハフマンテーブルクラス 0=DC成分 1=AC成分
 		unsigned char Thn = 0;//下位4bit ハフマンテーブル番号 0から3までのいずれか
-		unsigned char L[16] = {};//ハフマンテーフルbit配分数 例:L[0]は1bit符号の数, L[15]は16bit符号の数
+		unsigned char L[16] = {};//ハフマンテーブルbit配分数 例:L[0]は1bit符号の数, L[15]は16bit符号の数
 
 		//DC成分 符号+データ値というbit並びに対してのデータ値bit数
 		//AC成分 上位4bit　ランレングス数
@@ -83,15 +83,21 @@ private:
 		unsigned char* V = nullptr;
 		//データ値を2進数で見た場合先頭bit1の場合そのままの値とする
 		//先頭bit0の場合bit反転した数値にマイナス符号を付けた値とする,通常の2進数とは違う
-		//最初に生成した符号bitにデータbitをつけて, データ値と組にした表を生成
-		//それをツリー構造にする(DC,AC共通)
-		//DCの場合,上記の符号一致の場合はそのデータ値bitを解読済みとして追加していく
-		//ACの場合,解読済みbit最後尾からランレングス数だけ値0のbyteを追加,その後にデータ値bitを追加
+		//圧縮データは最初に生成した符号bitにデータbitをつけて並んでいる
+		//DCの場合,上記の符号一致の場合次のbitからVbit分取り出した値が解凍後bitとなる
+		//ACの場合,解読済みbit最後尾からランレングス数だけ値0のbyteを追加,その後に取り出したデータ値bitを追加
 		~DHTpara() {
 			delete[] V;
 			V = nullptr;
 		}
 	};
+
+	struct signSet {
+		unsigned short sign = 0;
+		unsigned char numBit = 0;
+		unsigned char valBit = 0;
+	};
+	void createSign(signSet* sig, unsigned char* L, unsigned char* V);
 
 	class SOF0component {
 	public:
