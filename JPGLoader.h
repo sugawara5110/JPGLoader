@@ -9,6 +9,44 @@
 
 #include <stdio.h>
 
+class JPGLoader;
+class HuffmanTree2;
+
+struct signSet {
+	unsigned short sign = 0;
+	unsigned char numBit = 0;
+	unsigned char valBit = 0;
+	unsigned char runlength = 0;
+};
+
+struct outTree {
+	unsigned char valBit = 0;
+	unsigned char runlength = 0;
+};
+
+class HuffmanNode2 {
+
+private:
+	friend HuffmanTree2;
+	HuffmanNode2* bit0 = nullptr;
+	HuffmanNode2* bit1 = nullptr;
+	outTree Val = {};
+
+	void setVal(outTree val, unsigned short bitArr, unsigned char numBit);
+	outTree getVal(unsigned long long* curSearchBit, unsigned char* byteArray);
+	~HuffmanNode2();
+};
+
+class HuffmanTree2 {
+
+private:
+	friend JPGLoader;
+	HuffmanNode2 hn;
+
+	void createTree(signSet* sigArr, unsigned int arraySize);
+	outTree getVal(unsigned long long* curSearchBit, unsigned char* byteArray);
+};
+
 class JPGLoader {
 
 private:
@@ -29,7 +67,7 @@ private:
 			delete[] byte;
 			byte = nullptr;
 		}
-		//ビックエンディアン
+		//ビックエンディアン  [0x1234]なら[0x12][0x34]の順 
 		unsigned int convertUCHARtoUINT() {
 			unsigned int ret = ((unsigned int)byte[index + 0] << 24) | ((unsigned int)byte[index + 1] << 16) |
 				((unsigned int)byte[index + 2] << 8) | ((unsigned int)byte[index + 3]);
@@ -37,7 +75,7 @@ private:
 			return ret;
 		}
 		unsigned short convertUCHARtoShort() {
-			unsigned int ret = ((unsigned int)byte[index + 0] << 8) | ((unsigned int)byte[index + 1]);
+			unsigned short ret = ((unsigned short)byte[index + 0] << 8) | ((unsigned short)byte[index + 1]);
 			index += 2;
 			return ret;
 		}
@@ -47,9 +85,9 @@ private:
 			return ret;
 		}
 		unsigned char* getPointer(unsigned int addPointer) {
-			unsigned char* ret = &byte[index];
+			unsigned char* by = &byte[index];
 			index += addPointer;
-			return ret;
+			return by;
 		}
 		unsigned int getIndex() {
 			return index;
@@ -92,12 +130,7 @@ private:
 		}
 	};
 
-	struct signSet {
-		unsigned short sign = 0;
-		unsigned char numBit = 0;
-		unsigned char valBit = 0;
-	};
-	void createSign(signSet* sig, unsigned char* L, unsigned char* V);
+	void createSign(signSet* sig, unsigned char* L, unsigned char* V, unsigned char Tcn);
 
 	class SOF0component {
 	public:
@@ -136,6 +169,18 @@ private:
 			sosC = nullptr;
 		}
 	};
+
+	struct YCrCb {
+		float Y = 0.0f;//輝度
+		float Cb = 0.0f;//青方向の色相
+		float Cr = 0.0f;//赤方向の色相
+	};
+	struct RGB {
+		unsigned char R = 0;
+		unsigned char G = 0;
+		unsigned char B = 0;
+	};
+	void decodeYCrCbtoRGB(RGB& dst, YCrCb& src);
 
 public:
 	unsigned char* loadJPG(char* pass, unsigned int outWid, unsigned int outHei);
