@@ -124,14 +124,7 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 	const unsigned int imageNumChannel = 4;
 	const unsigned int numPixel = outWid * imageNumChannel * outHei;
 	unsigned char* image = new unsigned char[numPixel];//外部で開放
-
-	//マーカー
-	const unsigned short SOI = 0xffd8;//スタート
-	const unsigned short DQT = 0xffdb;//量子化テーブル定義
-	const unsigned short DHT = 0xffc4;//ハフマンテーブル定義
-	const unsigned short SOF0 = 0xffc0;//フレームヘッダー
-	const unsigned short SOS = 0xffda;//スキャンヘッダー
-	const unsigned short EOI = 0xffd9;//エンド
+	unsigned char* unResizeImage = nullptr;
 
 	//---jpg構造---//
 	//SOI
@@ -147,13 +140,15 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 	DQTpara dqpara[4] = {};
 	DHTpara dhpara[8] = {};
 	SOF0para sof0para = {};
-	SOSpara sospara = {};
 	unsigned int dqparaIndex = 0;
 	unsigned int dhparaIndex = 0;
 	unsigned char* compImage = nullptr;
-	HuffmanTree2* htree[8] = {};
-	for (int i = 0; i < 8; i++)htree[i] = new HuffmanTree2();
-
+	for (int i = 0; i < 4; i++) {
+		htreeDC[i] = new HuffmanTree2();
+		htreeAC[i] = new HuffmanTree2();
+	}
+	unsigned int htreeDCInd = 0;
+	unsigned int htreeACInd = 0;
 	if (SOI != bp->convertUCHARtoShort())return nullptr;
 
 	bool eoi = false;
@@ -197,7 +192,11 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 				signSet* si = new signSet[lcnt];
 				createSign(si, d->L, d->V, d->Tcn);
 				//ツリー生成
-				htree[dhparaIndex++]->createTree(si, lcnt);
+				if (d->Tcn == 0)
+					htreeDC[htreeDCInd++]->createTree(si, lcnt);
+				else
+					htreeAC[htreeACInd++]->createTree(si, lcnt);
+
 			} while (len > 0);
 			continue;
 		}
@@ -207,6 +206,8 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 			sof0para.P = bp->getChar();
 			sof0para.Y = bp->convertUCHARtoShort();
 			sof0para.X = bp->convertUCHARtoShort();
+			unResizeImage = new unsigned char[sof0para.Y * 3 + sof0para.X];
+			memset(unResizeImage, 0, sof0para.Y * 3 + sof0para.X);
 			sof0para.Nf = bp->getChar();
 			SOF0component* s = sof0para.sofC;
 			for (unsigned char nf = 0; nf < sof0para.Nf; nf++) {
@@ -270,11 +271,23 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 	} while (bp->checkEOF());
 	if (!eoi)return nullptr;
 
+	//4:4:4を想定
+	//Y Cb Cr でMCU1個(64 × 3)byte
+	decompressHuffman(unResizeImage, compImage, sof0para.Y * 3 + sof0para.X);
 
 
-	for (int i = 0; i < 8; i++) {
-		delete htree[i];
-		htree[i] = nullptr;
+
+	delete[] unResizeImage;
+	unResizeImage = nullptr;
+	for (int i = 0; i < 4; i++) {
+		if (htreeDC[i]) {
+			delete htreeDC[i];
+			htreeDC[i] = nullptr;
+		}
+		if (htreeAC[i]) {
+			delete htreeAC[i];
+			htreeAC[i] = nullptr;
+		}
 	}
 	delete bp;
 	bp = nullptr;
@@ -306,6 +319,83 @@ void JPGLoader::createSign(signSet* sig, unsigned char* L, unsigned char* V, uns
 			vInd++;
 		}
 		prevNumBit = i;
+	}
+}
+
+void JPGLoader::decompressHuffman(unsigned char* decomp, unsigned char* comp, unsigned int size) {
+	unsigned long long curSearchBitcom = 0;
+	unsigned long long curSearchBitdecom = 0;
+	bool root = true;
+	outTree val = {};
+	while (root) {
+		for (unsigned char i = 0; i < sospara.Ns; i++) {
+			if (sospara.sosC->Tdn != 255) {
+				val = htreeDC[sospara.sosC->Tdn]->getVal(&curSearchBitcom, comp);
+				unsigned short outBit;
+				getBit(&curSearchBitcom, comp, val.valBit, &outBit, false);
+				unsigned int decomByteIndex = curSearchBitdecom / byteArrayNumbit;
+				unsigned int decomBitIndex = curSearchBitdecom % byteArrayNumbit;
+				unsigned short shiftBit = outBit;
+				
+				
+			}
+			else {
+				val = htreeAC[sospara.sosC->Tan]->getVal(&curSearchBitcom, comp);
+			}
+		}
+	}
+}
+
+void JPGLoader::createZigzagIndex(unsigned char* zigIndex) {
+	unsigned int zig[64] = {};
+	int zIndex = 0;
+	int x = 0;
+	int y = 0;
+	int index = 0;
+	zig[zIndex++] = 0;
+	bool down = true;
+	while (zIndex < 64) {
+		if (down) {
+			x++;
+			zig[zIndex++] = y * 8 + x;
+			while (x > 0) {
+				x--;
+				y++;
+				zig[zIndex++] = y * 8 + x;
+			}
+			if (x == 0 && y == 7) {
+				down = false;
+			}
+			else {
+				y++;
+				zig[zIndex++] = y * 8 + x;
+				while (y > 0) {
+					x++;
+					y--;
+					zig[zIndex++] = y * 8 + x;
+				}
+			}
+		}
+		else {
+			x++;
+			zig[zIndex++] = y * 8 + x;
+			if (x == 7 && y == 7)break;
+			while (x < 7) {
+				x++;
+				y--;
+				zig[zIndex++] = y * 8 + x;
+			}
+			y++;
+			zig[zIndex++] = y * 8 + x;
+			while (y < 7) {
+				x--;
+				y++;
+				zig[zIndex++] = y * 8 + x;
+			}
+		}
+	}
+	for (int i = 0; i < 64; i++) {
+		zigIndex[zig[i]] = i;
 	}
 }
 

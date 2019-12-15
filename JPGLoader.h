@@ -21,7 +21,7 @@ struct signSet {
 
 struct outTree {
 	unsigned char valBit = 0;
-	unsigned char runlength = 0;
+	unsigned char runlength = 0;//ZRL,EOBも有り
 };
 
 class HuffmanNode2 {
@@ -50,6 +50,17 @@ private:
 class JPGLoader {
 
 private:
+	//マーカー 0xffがマーカー始まり, 0xff00はffを通常の数値として使う場合
+	const unsigned short SOI = 0xffd8;//スタート
+	const unsigned short DQT = 0xffdb;//量子化テーブル定義
+	const unsigned short DHT = 0xffc4;//ハフマンテーブル定義
+	const unsigned short SOF0 = 0xffc0;//フレームヘッダー
+	const unsigned short SOS = 0xffda;//スキャンヘッダー
+	const unsigned short EOI = 0xffd9;//エンド
+	const unsigned short RST0 = 0xffd0;//0でリスタートする
+	const unsigned short RST3 = 0xffd3;//3でリスタートする
+	const unsigned char ZRL = 0xf0;//16個の0データを表す, valBit = 0である事
+	const unsigned char EOB = 0x00;//データ打ち切り,valBit = 0である事
 
 	class bytePointer {
 	private:
@@ -129,7 +140,8 @@ private:
 			V = nullptr;
 		}
 	};
-
+	HuffmanTree2* htreeDC[4];
+	HuffmanTree2* htreeAC[4];
 	void createSign(signSet* sig, unsigned char* L, unsigned char* V, unsigned char Tcn);
 
 	class SOF0component {
@@ -159,9 +171,9 @@ private:
 
 	class SOScomponent {
 	public:
-		unsigned char Csn = 0;//成分ID
-		unsigned char Tdn = 0;//上位4bit DC成分ハフマンテーブル番号
-		unsigned char Tan = 0;//下位4bit AC成分ハフマンテーブル番号
+		unsigned char Csn = 0;//成分ID, 1:Y, 2:Cb, 3:Cr, 4:I, 5:Q
+		unsigned char Tdn = 255;//上位4bit DC成分ハフマンテーブル番号0~3
+		unsigned char Tan = 255;//下位4bit AC成分ハフマンテーブル番号0~3
 	};
 	class SOSpara {
 	public:
@@ -177,7 +189,7 @@ private:
 			sosC = nullptr;
 		}
 	};
-
+	SOSpara sospara;
 	struct YCrCb {
 		float Y = 0.0f;//輝度
 		float Cb = 0.0f;//青方向の色相
@@ -189,6 +201,8 @@ private:
 		unsigned char B = 0;
 	};
 
+	void decompressHuffman(unsigned char* decomp, unsigned char* comp, unsigned int size);
+	void createZigzagIndex(unsigned char* zigIndex);
 	void inverseQuantization(char* dstDct, char* Qtbl, char* Qdata);//逆量子化
 	void inverseDCT(char* dst, char* src);//逆離散コサイン変換(ﾟ∀ﾟ)
 	void decodeYCrCbtoRGB(RGB& dst, YCrCb& src);
@@ -217,3 +231,8 @@ public:
 
 //量子化テーブルの値で割る
 //再生の場合は掛ける
+
+//ジグザグスキャン
+//低周波から高周波になるように,左上から右下にジグザグ状に並べ替えます
+
+//ハフマン圧縮
