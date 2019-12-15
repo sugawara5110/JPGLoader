@@ -134,14 +134,22 @@ private:
 
 	class SOF0component {
 	public:
-		unsigned char Cn = 0;//成分ID
+		unsigned char Cn = 0;//成分ID, 1:Y, 2:Cb, 3:Cr, 4:I, 5:Q
 		unsigned char Hn = 0;//上位4bit水平サンプリング値
 		unsigned char Vn = 0;//下位4bit垂直サンプリング値
+		//  設定    Y   Cb  Cr
+		//  4:4:4   11  11  11
+		//  4:4:0   12  11  11
+		//  4:2:2   21  11  11
+		//  4:2:0   22  11  11
+		//  4:1:1   41  11  11
+		//  4:1:0   42  11  11
+
 		unsigned char Tqn = 0;//対応量子化テーブル番号
 	};
 	class SOF0para {
 	public:
-		unsigned char P = 0;//サンプル精度
+		unsigned char P = 0;//サンプル精度, ほとんどが8(bit)1pixelサイズ
 		unsigned short Y = 0;//画像縦サイズ
 		unsigned short X = 0;//画像横サイズ
 		unsigned char Nf = 0;//構成要素の数(SOF0component)1:グレースケール, 3:カラー(YCbCr or YIQ), 4:カラー(CMYK)
@@ -180,6 +188,9 @@ private:
 		unsigned char G = 0;
 		unsigned char B = 0;
 	};
+
+	void inverseQuantization(char* dstDct, char* Qtbl, char* Qdata);//逆量子化
+	void inverseDCT(char* dst, char* src);//逆離散コサイン変換(ﾟ∀ﾟ)
 	void decodeYCrCbtoRGB(RGB& dst, YCrCb& src);
 
 public:
@@ -187,3 +198,22 @@ public:
 };
 
 #endif
+//エンコード
+
+//8 × 8 pixel単位をブロック
+//     ↓ 1マスが1ブロック
+// RR  GG  BB
+// RR  GG  BB
+//      ↓RGBをYCbCrに分解 4:2:0の場合
+// YY  bb  cc
+// YY  bb  cc
+//     ↓
+// YYYYbc  ←  MCU単位
+
+// 1ブロック毎(8×8pixel)に量子化
+//左上のピクセルを基準にデータの変化を周波数として分解
+//低周波のものから並べて8×8byteのデータにする(離散コサイン変換(ﾟ∀ﾟ))
+//左上のデータをDC成分, それ以外をAC成分
+
+//量子化テーブルの値で割る
+//再生の場合は掛ける

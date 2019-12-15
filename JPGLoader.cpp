@@ -7,6 +7,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "JPGLoader.h"
 #include <string.h>
+#include <math.h>
 
 static const int bitMask[]{
 	0b0000000000000000,
@@ -305,6 +306,38 @@ void JPGLoader::createSign(signSet* sig, unsigned char* L, unsigned char* V, uns
 			vInd++;
 		}
 		prevNumBit = i;
+	}
+}
+
+void JPGLoader::inverseQuantization(char* dstDct, char* Qtbl, char* Qdata) {
+	for (int i = 0; i < 64; i++)dstDct[i] = Qtbl[i] * Qdata[i];
+}
+
+static double C(int index) {
+	double ret = 0.0;
+	const double inverseRoute2 = 1 / 1.41421356237;
+	if (index == 0)ret = inverseRoute2;
+	else ret = 1;
+	return ret;
+}
+void JPGLoader::inverseDCT(char* dst, char* src) {
+	const double pi = 3.141592653589793;
+	for (int y = 0; y < 8; y++) {
+		for (int x = 0; x < 8; x++) {
+			int dstIndex = y * 8 + x;
+			double ds = 0.0;
+			for (int i = 0; i < 8; i++) {
+				double ds1 = 0.0;
+				for (int j = 0; j < 8; j++) {
+					int srcIndex = j * 8 + i;
+					ds1 += C(i) * C(j) * src[srcIndex] *
+						cos(((2 * x + 1) * i * pi) / 16) *
+						cos(((2 * y + 1) * j * pi) / 16);
+				}
+				ds += ds1;
+			}
+			dst[dstIndex] = (char)ds;
+		}
 	}
 }
 
