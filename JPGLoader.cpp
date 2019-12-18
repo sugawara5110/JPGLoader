@@ -124,7 +124,7 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 	const unsigned int imageNumChannel = 4;
 	const unsigned int numPixel = outWid * imageNumChannel * outHei;
 	unsigned char* image = new unsigned char[numPixel];//外部で開放
-	unsigned char* unResizeImage = nullptr;
+	short* unResizeImage = nullptr;
 
 	//---jpg構造---//
 	//SOI
@@ -147,8 +147,6 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 		htreeDC[i] = new HuffmanTree2();
 		htreeAC[i] = new HuffmanTree2();
 	}
-	unsigned int htreeDCInd = 0;
-	unsigned int htreeACInd = 0;
 	if (SOI != bp->convertUCHARtoShort())return nullptr;
 
 	bool eoi = false;
@@ -193,9 +191,9 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 				createSign(si, d->L, d->V, d->Tcn);
 				//ツリー生成
 				if (d->Tcn == 0)
-					htreeDC[htreeDCInd++]->createTree(si, lcnt);
+					htreeDC[d->Thn]->createTree(si, lcnt);
 				else
-					htreeAC[htreeACInd++]->createTree(si, lcnt);
+					htreeAC[d->Thn]->createTree(si, lcnt);
 
 			} while (len > 0);
 			continue;
@@ -206,8 +204,8 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 			sof0para.P = bp->getChar();
 			sof0para.Y = bp->convertUCHARtoShort();
 			sof0para.X = bp->convertUCHARtoShort();
-			unResizeImage = new unsigned char[sof0para.Y * 3 + sof0para.X];
-			memset(unResizeImage, 0, sof0para.Y * 3 + sof0para.X);
+			unResizeImage = new short[sof0para.X * 3 * sof0para.Y];
+			memset(unResizeImage, 0, sizeof(short) * sof0para.X * 3 * sof0para.Y);
 			sof0para.Nf = bp->getChar();
 			SOF0component* s = sof0para.sofC;
 			for (unsigned char nf = 0; nf < sof0para.Nf; nf++) {
@@ -252,13 +250,18 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 			if (!eoi)return nullptr;
 			bp->setIndex(imageSt);
 			compImage = new unsigned char[cnt];
+			compSize = cnt;
 			cnt = 0;
 			//圧縮イメージ格納
 			while (bp->checkEOF()) {
 				unsigned char t = bp->getChar();
 				if (0xff == t) {
-					if (0xd9 == bp->getChar()) {
+					unsigned char tt = bp->getChar();
+					if (0xd9 == tt) {
 						break;
+					}
+					if (0x00 != tt) {
+						t = bp->getChar();
 					}
 				}
 				compImage[cnt++] = t;
@@ -273,7 +276,7 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 
 	//4:4:4を想定
 	//Y Cb Cr でMCU1個(64 × 3)byte
-	decompressHuffman(unResizeImage, compImage, sof0para.Y * 3 + sof0para.X);
+	decompressHuffman(unResizeImage, compImage, sof0para.X * 3 * sof0para.Y);
 
 
 
@@ -322,26 +325,82 @@ void JPGLoader::createSign(signSet* sig, unsigned char* L, unsigned char* V, uns
 	}
 }
 
-void JPGLoader::decompressHuffman(unsigned char* decomp, unsigned char* comp, unsigned int size) {
-	unsigned long long curSearchBitcom = 0;
-	unsigned long long curSearchBitdecom = 0;
-	bool root = true;
+void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned int size) {
+	unsigned long long curSearchBit = 0;
+	unsigned int decompIndex = 0;
 	outTree val = {};
-	while (root) {
-		for (unsigned char i = 0; i < sospara.Ns; i++) {
-			if (sospara.sosC->Tdn != 255) {
-				val = htreeDC[sospara.sosC->Tdn]->getVal(&curSearchBitcom, comp);
-				unsigned short outBit;
-				getBit(&curSearchBitcom, comp, val.valBit, &outBit, false);
-				unsigned int decomByteIndex = curSearchBitdecom / byteArrayNumbit;
-				unsigned int decomBitIndex = curSearchBitdecom % byteArrayNumbit;
-				unsigned short shiftBit = outBit;
-				
-				
+	unsigned int numEmement = (unsigned int)sospara.Ns;
+	unsigned int sosIndex = -1;
+	unsigned int dcIndex = 0;
+	unsigned int acIndex = 0;
+	//bitInversion(comp, compSize);
+	int dc = 0;
+	int ac = 0;
+	while (decompIndex < size) {
+		if (decompIndex % 64 == 0) {
+			sosIndex = ++sosIndex % numEmement;
+			dcIndex = sospara.sosC[sosIndex].Tdn;
+			acIndex = sospara.sosC[sosIndex].Tan;
+			val = htreeDC[dcIndex]->getVal(&curSearchBit, comp);
+
+			if (val.valBit > 0) {
+				unsigned short outBit = 0;
+				getBit(&curSearchBit, comp, val.valBit, &outBit, false);
+				short bit = 0;
+				if ((outBit >> (val.valBit - 1)) == 0) {
+					bit = (~outBit & bitMask[val.valBit]) * -1;
+				}
+				else {
+					bit = outBit;
+				}
+				decomp[decompIndex++] = bit;
+				dc++;
+			}
+		}
+		else {
+			val = htreeAC[acIndex]->getVal(&curSearchBit, comp);
+
+			if (val.valBit > 0) {
+				unsigned short outBit = 0;
+				getBit(&curSearchBit, comp, val.valBit, &outBit, false);
+				for (unsigned char len = 0; len < val.runlength; len++) {
+					decomp[decompIndex++] = 0;
+					ac++;
+				}
+				short bit = 0;
+				if ((outBit >> (val.valBit - 1)) == 0) {
+					bit = (~outBit & bitMask[val.valBit]) * -1;
+				}
+				else {
+					bit = outBit;
+				}
+				decomp[decompIndex++] = bit;
+				ac++;
 			}
 			else {
-				val = htreeAC[sospara.sosC->Tan]->getVal(&curSearchBitcom, comp);
+				if (val.runlength == ZRL) {
+					for (unsigned char len = 0; len < 16; len++) {
+						decomp[decompIndex++] = 0;
+						ac++;
+					}
+				}
+				if (val.runlength == EOB) {
+					while (1) {
+						decomp[decompIndex] = 0;
+						decompIndex++;
+						ac++;
+						if (decompIndex % 64 == 0)break;
+
+					}
+				}
 			}
+
+		}
+		if (decompIndex == 64 * 95) {
+			int b = 0;
+		}
+		if (decompIndex % 64 == 0) {
+			int r = 0;
 		}
 	}
 }

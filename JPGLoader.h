@@ -59,8 +59,9 @@ private:
 	const unsigned short EOI = 0xffd9;//エンド
 	const unsigned short RST0 = 0xffd0;//0でリスタートする
 	const unsigned short RST3 = 0xffd3;//3でリスタートする
-	const unsigned char ZRL = 0xf0;//16個の0データを表す, valBit = 0である事
-	const unsigned char EOB = 0x00;//データ打ち切り,valBit = 0である事
+	const unsigned char ZRL = 0xf;//16個の0データを表す, valBit = 0である事
+	const unsigned char EOB = 0x0;//データ打ち切り,valBit = 0である事
+	unsigned int compSize = 0;
 
 	class bytePointer {
 	private:
@@ -172,8 +173,8 @@ private:
 	class SOScomponent {
 	public:
 		unsigned char Csn = 0;//成分ID, 1:Y, 2:Cb, 3:Cr, 4:I, 5:Q
-		unsigned char Tdn = 255;//上位4bit DC成分ハフマンテーブル番号0~3
-		unsigned char Tan = 255;//下位4bit AC成分ハフマンテーブル番号0~3
+		unsigned char Tdn = 0;//上位4bit DC成分ハフマンテーブル番号0~3
+		unsigned char Tan = 0;//下位4bit AC成分ハフマンテーブル番号0~3
 	};
 	class SOSpara {
 	public:
@@ -201,7 +202,7 @@ private:
 		unsigned char B = 0;
 	};
 
-	void decompressHuffman(unsigned char* decomp, unsigned char* comp, unsigned int size);
+	void decompressHuffman(short* decomp, unsigned char* comp, unsigned int size);
 	void createZigzagIndex(unsigned char* zigIndex);
 	void inverseQuantization(char* dstDct, char* Qtbl, char* Qdata);//逆量子化
 	void inverseDCT(char* dst, char* src);//逆離散コサイン変換(ﾟ∀ﾟ)
