@@ -147,6 +147,10 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 		htreeDC[i] = new HuffmanTree2();
 		htreeAC[i] = new HuffmanTree2();
 	}
+	unsigned int unResizeImageSize = 0;
+	unsigned char samplingX = 0;
+	unsigned char samplingY = 0;
+
 	if (SOI != bp->convertUCHARtoShort())return nullptr;
 
 	bool eoi = false;
@@ -194,7 +198,7 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 					htreeDC[d->Thn]->createTree(si, lcnt);
 				else
 					htreeAC[d->Thn]->createTree(si, lcnt);
-
+				delete[] si;
 			} while (len > 0);
 			continue;
 		}
@@ -204,8 +208,6 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 			sof0para.P = bp->getChar();
 			sof0para.Y = bp->convertUCHARtoShort();
 			sof0para.X = bp->convertUCHARtoShort();
-			unResizeImage = new short[sof0para.X * 3 * sof0para.Y];
-			memset(unResizeImage, 0, sizeof(short) * sof0para.X * 3 * sof0para.Y);
 			sof0para.Nf = bp->getChar();
 			SOF0component* s = sof0para.sofC;
 			for (unsigned char nf = 0; nf < sof0para.Nf; nf++) {
@@ -213,8 +215,41 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 				unsigned char pt = bp->getChar();
 				s[nf].Hn = (pt >> 4) & 0xf;
 				s[nf].Vn = pt & 0xf;
+				if (s[nf].Cn == 1) {
+					samplingX = s[nf].Hn;
+					samplingY = s[nf].Vn;
+				}
 				s[nf].Tqn = bp->getChar();
 			}
+			unsigned short sx = 0;
+			unsigned short sy = 0;
+			if (samplingX == 1 && samplingY == 1) {//4:4:4
+				sx = sof0para.X / 8 * 8 + 8;
+				sy = sof0para.Y / 8 * 8 + 8;
+			}
+			if (samplingX == 1 && samplingY == 2) {//4:4:0
+				sx = sof0para.X / 8 * 8 + 8;
+				sy = sof0para.Y / 16 * 16 + 16;
+			}
+			if (samplingX == 2 && samplingY == 1) {//4:2:2
+				sx = sof0para.X / 16 * 16 + 16;
+				sy = sof0para.Y / 8 * 8 + 8;
+			}
+			if (samplingX == 2 && samplingY == 2) {//4:2:0
+				sx = sof0para.X / 16 * 16 + 16;
+				sy = sof0para.Y / 16 * 16 + 16;
+			}
+			if (samplingX == 4 && samplingY == 1) {//4:1:1
+				sx = sof0para.X / 32 * 32 + 32;
+				sy = sof0para.Y / 8 * 8 + 8;
+			}
+			if (samplingX == 4 && samplingY == 2) {//4:1:0
+				sx = sof0para.X / 32 * 32 + 32;
+				sy = sof0para.Y / 16 * 16 + 16;
+			}
+			unResizeImageSize = sx * 3 * sy;
+			unResizeImage = new short[unResizeImageSize];
+			memset(unResizeImage, 0, sizeof(short) * unResizeImageSize);
 			continue;
 		}
 		if (SOS == marker) {
@@ -254,6 +289,7 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 			cnt = 0;
 			//à≥èkÉCÉÅÅ[ÉWäiî[
 			while (bp->checkEOF()) {
+				bool f = true;
 				unsigned char t = bp->getChar();
 				if (0xff == t) {
 					unsigned char tt = bp->getChar();
@@ -261,10 +297,11 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 						break;
 					}
 					if (0x00 != tt) {
-						t = bp->getChar();
+						f = false;
 					}
 				}
-				compImage[cnt++] = t;
+				if (f)
+					compImage[cnt++] = t;
 			}
 			break;
 		}
@@ -274,9 +311,7 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 	} while (bp->checkEOF());
 	if (!eoi)return nullptr;
 
-	//4:4:4ÇëzíË
-	//Y Cb Cr Ç≈MCU1å¬(64 Å~ 3)byte
-	decompressHuffman(unResizeImage, compImage, sof0para.X * 3 * sof0para.Y);
+	decompressHuffman(unResizeImage, compImage, unResizeImageSize, samplingX, samplingY);
 
 
 
@@ -325,7 +360,34 @@ void JPGLoader::createSign(signSet* sig, unsigned char* L, unsigned char* V, uns
 	}
 }
 
-void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned int size) {
+void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned int size,
+	unsigned char samplingX, unsigned char samplingY) {
+
+	unsigned char indexS[10] = {};
+	unsigned char indexSize = 0;
+	if (samplingX * samplingY == 1) {//4:4:4
+		indexSize = 3;
+		unsigned char ind[3] = { 0,1,2 };
+		memcpy(indexS, ind, indexSize);
+	}
+	if (samplingX * samplingY == 2) {//4:4:0 4:2:2
+		indexSize = 4;
+		unsigned char ind[4] = { 0,0,1,2 };
+		memcpy(indexS, ind, indexSize);
+	}
+	if (samplingX * samplingY == 4) {//4:2:0 4:1:1
+		indexSize = 6;
+		unsigned char ind[6] = { 0,0,0,0,1,2 };
+		memcpy(indexS, ind, indexSize);
+	}
+	if (samplingX * samplingY == 8) {//4:1:0
+		indexSize = 10;
+		unsigned char ind[10] = { 0,0,0,0,0,0,0,0,1,2 };
+		memcpy(indexS, ind, indexSize);
+	}
+
+	unsigned short decompTmp[64] = {};
+	unsigned int decompTmpIndex = 0;
 	unsigned long long curSearchBit = 0;
 	unsigned int decompIndex = 0;
 	outTree val = {};
@@ -337,25 +399,25 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 	int dc = 0;
 	int ac = 0;
 	while (decompIndex < size) {
-		if (decompIndex % 64 == 0) {
-			sosIndex = ++sosIndex % numEmement;
-			dcIndex = sospara.sosC[sosIndex].Tdn;
-			acIndex = sospara.sosC[sosIndex].Tan;
+		if (decompTmpIndex == 0) {
+			sosIndex = ++sosIndex % indexSize;
+			dcIndex = sospara.sosC[indexS[sosIndex]].Tdn;
+			acIndex = sospara.sosC[indexS[sosIndex]].Tan;
 			val = htreeDC[dcIndex]->getVal(&curSearchBit, comp);
 
+			short bit = 0;
 			if (val.valBit > 0) {
 				unsigned short outBit = 0;
 				getBit(&curSearchBit, comp, val.valBit, &outBit, false);
-				short bit = 0;
 				if ((outBit >> (val.valBit - 1)) == 0) {
 					bit = (~outBit & bitMask[val.valBit]) * -1;
 				}
 				else {
 					bit = outBit;
 				}
-				decomp[decompIndex++] = bit;
-				dc++;
 			}
+			decompTmp[decompTmpIndex++] = bit;
+			dc++;
 		}
 		else {
 			val = htreeAC[acIndex]->getVal(&curSearchBit, comp);
@@ -364,7 +426,7 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 				unsigned short outBit = 0;
 				getBit(&curSearchBit, comp, val.valBit, &outBit, false);
 				for (unsigned char len = 0; len < val.runlength; len++) {
-					decomp[decompIndex++] = 0;
+					decompTmp[decompTmpIndex++] = 0;
 					ac++;
 				}
 				short bit = 0;
@@ -374,35 +436,39 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 				else {
 					bit = outBit;
 				}
-				decomp[decompIndex++] = bit;
+				decompTmp[decompTmpIndex++] = bit;
 				ac++;
 			}
 			else {
 				if (val.runlength == ZRL) {
 					for (unsigned char len = 0; len < 16; len++) {
-						decomp[decompIndex++] = 0;
+						decompTmp[decompTmpIndex++] = 0;
 						ac++;
 					}
 				}
 				if (val.runlength == EOB) {
 					while (1) {
-						decomp[decompIndex] = 0;
-						decompIndex++;
+						decompTmp[decompTmpIndex] = 0;
+						decompTmpIndex++;
 						ac++;
-						if (decompIndex % 64 == 0)break;
-
+						if (decompTmpIndex == 64)break;
 					}
 				}
 			}
+		}
 
+		if (decompTmpIndex == 64) {
+			int loop = 1;
+			if (indexS[sosIndex] != 0)loop = indexSize - 2;
+			for (int i = 0; i < loop; i++) {
+				memcpy(&decomp[decompIndex], decompTmp, sizeof(short) * 64);
+				decompIndex += 64;
+			}
+			decompTmpIndex = 0;
 		}
-		if (decompIndex == 64 * 95) {
-			int b = 0;
-		}
-		if (decompIndex % 64 == 0) {
-			int r = 0;
-		}
+
 	}
+	int j = 0;
 }
 
 void JPGLoader::createZigzagIndex(unsigned char* zigIndex) {

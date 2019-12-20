@@ -202,7 +202,8 @@ private:
 		unsigned char B = 0;
 	};
 
-	void decompressHuffman(short* decomp, unsigned char* comp, unsigned int size);
+	void decompressHuffman(short* decomp, unsigned char* comp, unsigned int size,
+		unsigned char samplingX, unsigned char samplingY);
 	void createZigzagIndex(unsigned char* zigIndex);
 	void inverseQuantization(char* dstDct, char* Qtbl, char* Qdata);//‹t—Êq‰»
 	void inverseDCT(char* dst, char* src);//‹t—£UƒRƒTƒCƒ“•ÏŠ·(ßÍß)
