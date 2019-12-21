@@ -120,6 +120,7 @@ private:
 		unsigned char Qn0[64] = {};//量子化テーブル 64個の量子化係数 Pqn=0の場合
 		unsigned short Qn1[64] = {};//量子化テーブル 64個の量子化係数 Pqn=1の場合
 	};
+	DQTpara dqpara[4] = {};
 
 	class DHTpara {
 	public:
@@ -169,6 +170,7 @@ private:
 
 		SOF0component sofC[4] = {};
 	};
+	SOF0para sof0para = {};
 
 	class SOScomponent {
 	public:
@@ -203,12 +205,22 @@ private:
 		unsigned char B = 0;
 	};
 
-	void decompressHuffman(short* decomp, unsigned char* comp, unsigned int size,
-		unsigned char samplingX, unsigned char samplingY, unsigned short dri);
+	const unsigned int imageNumChannel = 4;
+
+	void decompressHuffman(short* decomp, unsigned char* comp, unsigned int decompSize,
+		unsigned char mcuSize, unsigned char* componentIndex, unsigned short dri);
 	void createZigzagIndex(unsigned char* zigIndex);
-	void inverseQuantization(char* dstDct, char* Qtbl, char* Qdata);//逆量子化
-	void inverseDCT(char* dst, char* src);//逆離散コサイン変換(ﾟ∀ﾟ)
+	void zigzagScan(short* decomp, unsigned char* zigIndex, unsigned int decompSize);
+	void inverseQuantization(short* decomp, unsigned int decompSize,
+		unsigned char mcuSize, unsigned char* componentIndex);//逆量子化
+	void inverseDiscreteCosineTransfer(short* decomp, unsigned int size);//逆離散コサイン変換(ﾟ∀ﾟ)
 	void decodeYCrCbtoRGB(RGB& dst, YCrCb& src);
+	void decodePixel(unsigned char* pix, short* decomp,
+		unsigned char samplingX, unsigned char samplingY,
+		unsigned int width, unsigned int height);
+	void resize(unsigned char* dstImage, unsigned char* srcImage,
+		unsigned int dstWid, unsigned int dstHei,
+		unsigned int srcWid, unsigned int srcNumChannel, unsigned int srcHei);
 
 public:
 	unsigned char* loadJPG(char* pass, unsigned int outWid, unsigned int outHei);

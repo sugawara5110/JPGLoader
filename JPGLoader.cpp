@@ -99,7 +99,6 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 	bytePointer* bp = new bytePointer(count, fp);
 	fclose(fp);
 
-	const unsigned int imageNumChannel = 4;
 	const unsigned int numPixel = outWid * imageNumChannel * outHei;
 	unsigned char* image = new unsigned char[numPixel];//外部で開放
 	short* unResizeImage = nullptr;
@@ -114,10 +113,7 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 	//マーカー2byte
 	//レングス長2byte 内容: セグメントパラメーターbyte数 + 2byte
 	//セグメントパラメーター
-
-	DQTpara dqpara[4] = {};
 	DHTpara dhpara[8] = {};
-	SOF0para sof0para = {};
 	unsigned int dqparaIndex = 0;
 	unsigned int dhparaIndex = 0;
 	unsigned char* compImage = nullptr;
@@ -126,6 +122,8 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 		htreeAC[i] = new HuffmanTree2();
 	}
 	unsigned int unResizeImageSize = 0;
+	unsigned int unResizeImageSizeX = 0;
+	unsigned int unResizeImageSizeY = 0;
 	unsigned char samplingX = 0;
 	unsigned char samplingY = 0;
 	unsigned int DefineRestartInterval = 0;
@@ -227,6 +225,8 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 				if (sy % 16 != 0)sy = sy / 16 * 16 + 16;
 			}
 			unResizeImageSize = sx * 3 * sy;
+			unResizeImageSizeX = sx;
+			unResizeImageSizeY = sy;
 			unResizeImage = new short[unResizeImageSize];
 			memset(unResizeImage, 0, sizeof(short) * unResizeImageSize);
 			continue;
@@ -255,9 +255,11 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 			while (bp->checkEOF()) {
 				if (0xff == bp->getChar()) {
 					if (0xd9 == bp->getChar()) {
+						cnt++;
 						eoi = true;
 						break;
 					}
+					cnt++;
 				}
 				cnt++;
 			}
@@ -300,12 +302,43 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 	} while (bp->checkEOF());
 	if (!eoi)return nullptr;
 
-	decompressHuffman(unResizeImage, compImage, unResizeImageSize, samplingX, samplingY, DefineRestartInterval);
+	unsigned char indexS[10] = {};
+	unsigned char mcuSize = 0;
+	if (samplingX * samplingY == 1) {//4:4:4
+		mcuSize = 3;
+		unsigned char ind[3] = { 0,1,2 };
+		memcpy(indexS, ind, mcuSize);
+	}
+	if (samplingX * samplingY == 2) {//4:4:0 4:2:2
+		mcuSize = 4;
+		unsigned char ind[4] = { 0,0,1,2 };
+		memcpy(indexS, ind, mcuSize);
+	}
+	if (samplingX * samplingY == 4) {//4:2:0 4:1:1
+		mcuSize = 6;
+		unsigned char ind[6] = { 0,0,0,0,1,2 };
+		memcpy(indexS, ind, mcuSize);
+	}
+	if (samplingX * samplingY == 8) {//4:1:0
+		mcuSize = 10;
+		unsigned char ind[10] = { 0,0,0,0,0,0,0,0,1,2 };
+		memcpy(indexS, ind, mcuSize);
+	}
 
-
+	decompressHuffman(unResizeImage, compImage, unResizeImageSize, mcuSize, indexS, DefineRestartInterval);
+	unsigned char zigIndex[64];
+	createZigzagIndex(zigIndex);
+	zigzagScan(unResizeImage, zigIndex, unResizeImageSize);
+	inverseQuantization(unResizeImage, unResizeImageSize, mcuSize, indexS);
+	inverseDiscreteCosineTransfer(unResizeImage, unResizeImageSize);
+	unsigned char* pix = new unsigned char[unResizeImageSize];
+	decodePixel(pix, unResizeImage, samplingX, samplingY, unResizeImageSizeX, unResizeImageSizeY);
+	resize(image, pix, outWid, outHei, unResizeImageSizeX, 3, unResizeImageSizeY);
 
 	delete[] unResizeImage;
 	unResizeImage = nullptr;
+	delete[] pix;
+	pix = nullptr;
 	for (int i = 0; i < 4; i++) {
 		if (htreeDC[i]) {
 			delete htreeDC[i];
@@ -349,49 +382,26 @@ void JPGLoader::createSign(signSet* sig, unsigned char* L, unsigned char* V, uns
 	}
 }
 
-void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned int size,
-	unsigned char samplingX, unsigned char samplingY, unsigned short dri) {
-
-	unsigned char indexS[10] = {};
-	unsigned char mcuSize = 0;
-	if (samplingX * samplingY == 1) {//4:4:4
-		mcuSize = 3;
-		unsigned char ind[3] = { 0,1,2 };
-		memcpy(indexS, ind, mcuSize);
-	}
-	if (samplingX * samplingY == 2) {//4:4:0 4:2:2
-		mcuSize = 4;
-		unsigned char ind[4] = { 0,0,1,2 };
-		memcpy(indexS, ind, mcuSize);
-	}
-	if (samplingX * samplingY == 4) {//4:2:0 4:1:1
-		mcuSize = 6;
-		unsigned char ind[6] = { 0,0,0,0,1,2 };
-		memcpy(indexS, ind, mcuSize);
-	}
-	if (samplingX * samplingY == 8) {//4:1:0
-		mcuSize = 10;
-		unsigned char ind[10] = { 0,0,0,0,0,0,0,0,1,2 };
-		memcpy(indexS, ind, mcuSize);
-	}
+void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned int decompSize,
+	unsigned char mcuSize, unsigned char* componentIndex, unsigned short dri) {
 
 	unsigned short decompTmp[64] = {};
 	unsigned int decompTmpIndex = 0;
 	unsigned long long curSearchBit = 0;
 	unsigned int decompIndex = 0;
 	outTree val = {};
-	unsigned int numEmement = (unsigned int)sospara.Ns;
 	unsigned int sosIndex = -1;
 	unsigned int dcIndex = 0;
 	unsigned int acIndex = 0;
 	unsigned int mcuCnt = 0;
+	short prevDc = 0;
 	int dc = 0;
 	int ac = 0;
-	while (decompIndex < size) {
+	while (decompIndex < decompSize) {
 		if (decompTmpIndex == 0) {
 			sosIndex = ++sosIndex % mcuSize;
-			dcIndex = sospara.sosC[indexS[sosIndex]].Tdn;
-			acIndex = sospara.sosC[indexS[sosIndex]].Tan;
+			dcIndex = sospara.sosC[componentIndex[sosIndex]].Tdn;
+			acIndex = sospara.sosC[componentIndex[sosIndex]].Tan;
 			val = htreeDC[dcIndex]->getVal(&curSearchBit, comp);
 
 			short bit = 0;
@@ -405,7 +415,7 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 					bit = outBit;
 				}
 			}
-			decompTmp[decompTmpIndex++] = bit;
+			decompTmp[decompTmpIndex++] = prevDc = bit + prevDc;
 			dc++;
 		}
 		else {
@@ -448,9 +458,9 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 		if (sosIndex == mcuSize - 1 && decompTmpIndex == 64) {
 			mcuCnt++;
 			if (mcuCnt == dri) {
-				//リスタート処理を書く
-
-				//マーカー分スキップ
+				//DC差分用変数リセット
+				prevDc = 0;
+				//マーカー分スキップ, マーカー直前で数bit半端になる場合はbyte境界でそろえる
 				if (curSearchBit % 8 != 0)curSearchBit = curSearchBit / 8 * 8 + 8;
 				curSearchBit += 16;
 				mcuCnt = 0;
@@ -458,7 +468,7 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 		}
 		if (decompTmpIndex == 64) {
 			int loop = 1;
-			if (indexS[sosIndex] != 0)loop = mcuSize - 2;
+			if (componentIndex[sosIndex] != 0)loop = mcuSize - 2;
 			for (int i = 0; i < loop; i++) {
 				memcpy(&decomp[decompIndex], decompTmp, sizeof(short) * 64);
 				decompIndex += 64;
@@ -466,7 +476,6 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 			decompTmpIndex = 0;
 		}
 	}
-	int j = 0;
 }
 
 void JPGLoader::createZigzagIndex(unsigned char* zigIndex) {
@@ -522,8 +531,32 @@ void JPGLoader::createZigzagIndex(unsigned char* zigIndex) {
 	}
 }
 
-void JPGLoader::inverseQuantization(char* dstDct, char* Qtbl, char* Qdata) {
-	for (int i = 0; i < 64; i++)dstDct[i] = Qtbl[i] * Qdata[i];
+void JPGLoader::zigzagScan(short* decomp, unsigned char* zigIndex, unsigned int decompSize) {
+	unsigned int zIndex = 0;
+	short* zigArr = new short[decompSize];
+	memcpy(zigArr, decomp, sizeof(short) * decompSize);
+
+	for (unsigned int i = 0; i < decompSize; i++) {
+		zIndex = zIndex % 64;
+		decomp[i] = zigArr[zigIndex[zIndex++]];
+	}
+	delete[] zigArr;
+}
+
+void JPGLoader::inverseQuantization(short* decomp, unsigned int decompSize,
+	unsigned char mcuSize, unsigned char* componentIndex) {
+
+	unsigned int qIndex = 0;
+	unsigned int sofIndex = -1;
+
+	for (unsigned int i = 0; i < decompSize; i++) {
+		qIndex = qIndex % 64;
+		if (qIndex == 0) {
+			sofIndex = ++sofIndex % mcuSize;
+		}
+		decomp[i] *= dqpara[sof0para.sofC[componentIndex[sofIndex]].Tqn].Qn0[qIndex];
+		qIndex++;
+	}
 }
 
 static double C(int index) {
@@ -533,7 +566,7 @@ static double C(int index) {
 	else ret = 1;
 	return ret;
 }
-void JPGLoader::inverseDCT(char* dst, char* src) {
+static void inverseDCT(short* dst, short* src) {
 	const double pi = 3.141592653589793;
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
@@ -549,8 +582,18 @@ void JPGLoader::inverseDCT(char* dst, char* src) {
 				}
 				ds += ds1;
 			}
-			dst[dstIndex] = (char)ds;
+			dst[dstIndex] = (short)ds;
 		}
+	}
+}
+void JPGLoader::inverseDiscreteCosineTransfer(short* decomp, unsigned int size) {
+	unsigned int loop = size / 64;
+	unsigned int index = 0;
+	short dst[64] = {};
+	for (unsigned int i = 0; i < loop; i++) {
+		inverseDCT(dst, &decomp[index]);
+		memcpy(&decomp[index], dst, sizeof(short) * 64);
+		index += 64;
 	}
 }
 
@@ -558,4 +601,52 @@ void JPGLoader::decodeYCrCbtoRGB(RGB& dst, YCrCb& src) {
 	dst.R = ((unsigned char)src.Y + 128) + (unsigned char)(1.402f * (src.Cr - 128.0f));
 	dst.G = ((unsigned char)src.Y + 128) - (unsigned char)(0.34414f * (src.Cb - 128.0f) - 0.71414f * (src.Cr - 128.0f));
 	dst.B = ((unsigned char)src.Y + 128) + (unsigned char)(1.772f * (src.Cb - 128.0f));
+}
+
+void JPGLoader::decodePixel(unsigned char* pix, short* decomp,
+	unsigned char samplingX, unsigned char samplingY,
+	unsigned int width, unsigned int height) {
+
+	unsigned int pIndex = 0;
+	for (unsigned int y = 0; y < height; y += 8) {
+		for (unsigned int x = 0; x < width * 3; x += 24) {
+			for (unsigned int y0 = 0; y0 < 8; y0++) {
+				for (unsigned int x0 = 0; x0 < 8; x0++) {
+					unsigned int dIndexY = (y + y0) * width * 3 + x + x0;
+					unsigned int dIndexR = (y + y0) * width * 3 + x + x0 + 8;
+					unsigned int dIndexB = (y + y0) * width * 3 + x + x0 + 16;
+					YCrCb ycc;
+					ycc.Y = (float)decomp[dIndexY];
+					ycc.Cr = (float)decomp[dIndexR];
+					ycc.Cb = (float)decomp[dIndexB];
+					RGB rgb;
+					decodeYCrCbtoRGB(rgb, ycc);
+					pix[pIndex++] = rgb.R;
+					pix[pIndex++] = rgb.G;
+					pix[pIndex++] = rgb.B;
+				}
+			}
+		}
+	}
+}
+
+void JPGLoader::resize(unsigned char* dstImage, unsigned char* srcImage,
+	unsigned int dstWid, unsigned int dstHei,
+	unsigned int srcWid, unsigned int srcNumChannel, unsigned int srcHei) {
+
+	unsigned int dWid = dstWid * imageNumChannel;
+	unsigned int sWid = srcWid * srcNumChannel;
+
+	for (unsigned int dh = 0; dh < dstHei; dh++) {
+		unsigned int sh = (unsigned int)((float)srcHei / (float)dstHei * dh);
+		for (unsigned int dw = 0; dw < dstWid; dw++) {
+			unsigned int dstInd0 = dWid * dh + dw * imageNumChannel;
+			unsigned int sw = (unsigned int)((float)srcWid / (float)dstWid * dw) * srcNumChannel;
+			unsigned int srcInd0 = sWid * sh + sw;
+			dstImage[dstInd0 + 0] = srcImage[srcInd0];
+			dstImage[dstInd0 + 1] = srcImage[srcInd0 + 1];
+			dstImage[dstInd0 + 2] = srcImage[srcInd0 + 2];
+			dstImage[dstInd0 + 3] = 255;
+		}
+	}
 }
