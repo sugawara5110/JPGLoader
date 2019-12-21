@@ -57,11 +57,11 @@ private:
 	const unsigned short SOF0 = 0xffc0;//フレームヘッダー
 	const unsigned short SOS = 0xffda;//スキャンヘッダー
 	const unsigned short EOI = 0xffd9;//エンド
+	const unsigned short DRI = 0xffdd;//リスタート定義
 	const unsigned short RST0 = 0xffd0;//0でリスタートする
-	const unsigned short RST3 = 0xffd3;//3でリスタートする
+	const unsigned short RST7 = 0xffd7;//7でリスタートする
 	const unsigned char ZRL = 0xf;//16個の0データを表す, valBit = 0である事
 	const unsigned char EOB = 0x0;//データ打ち切り,valBit = 0である事
-	unsigned int compSize = 0;
 
 	class bytePointer {
 	private:
@@ -191,6 +191,7 @@ private:
 		}
 	};
 	SOSpara sospara;
+
 	struct YCrCb {
 		float Y = 0.0f;//輝度
 		float Cb = 0.0f;//青方向の色相
@@ -203,7 +204,7 @@ private:
 	};
 
 	void decompressHuffman(short* decomp, unsigned char* comp, unsigned int size,
-		unsigned char samplingX, unsigned char samplingY);
+		unsigned char samplingX, unsigned char samplingY, unsigned short dri);
 	void createZigzagIndex(unsigned char* zigIndex);
 	void inverseQuantization(char* dstDct, char* Qtbl, char* Qdata);//逆量子化
 	void inverseDCT(char* dst, char* src);//逆離散コサイン変換(ﾟ∀ﾟ)

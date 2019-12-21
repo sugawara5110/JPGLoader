@@ -30,35 +30,13 @@ static const int bitMask[]{
 };
 
 static const int byteArrayNumbit = 8;
-static const int LEFT_INV_BIT1 = 0b0101010101010101;
-static const int RIGHT_INV_BIT1 = 0b1010101010101010;
-static const int LEFT_INV_BIT2 = 0b0011001100110011;
-static const int RIGHT_INV_BIT2 = 0b1100110011001100;
-static const int LEFT_INV_BIT4 = 0b0000111100001111;
-static const int RIGHT_INV_BIT4 = 0b1111000011110000;
 
-static unsigned short intInversion(unsigned short ba, int numBit) {
-	unsigned short oBa = 0;
-	const int baseNum = 16;
-	oBa = ((ba & LEFT_INV_BIT1) << 1) | ((ba & RIGHT_INV_BIT1) >> 1);
-	oBa = ((oBa & LEFT_INV_BIT2) << 2) | ((oBa & RIGHT_INV_BIT2) >> 2);
-	oBa = ((oBa & LEFT_INV_BIT4) << 4) | ((oBa & RIGHT_INV_BIT4) >> 4);
-	return ((oBa << 8) | (oBa >> 8)) >> (baseNum - numBit);
-}
-
-static void bitInversion(unsigned char* ba, unsigned int size) {
-	for (unsigned int i = 0; i < size; i++) {
-		ba[i] = (unsigned char)intInversion((unsigned short)ba[i], 8);
-	}
-}
-
-static void getBit(unsigned long long* CurSearchBit, unsigned char* byteArray, unsigned char NumBit, unsigned short* outBinArr, bool firstRight) {
+static void getBit(unsigned long long* CurSearchBit, unsigned char* byteArray, unsigned char NumBit, unsigned short* outBinArr) {
 	unsigned int baind = (unsigned int)(*CurSearchBit / byteArrayNumbit);//配列インデックス
 	unsigned int bitPos = (unsigned int)(*CurSearchBit % byteArrayNumbit);//要素内bit位置インデックス
 	unsigned char shiftBit = byteArrayNumbit * 3 - NumBit - bitPos;
 	*outBinArr = (((byteArray[baind] << 16) | (byteArray[baind + 1] << 8) |
 		byteArray[baind + 2]) >> shiftBit)& bitMask[NumBit];
-	if (firstRight) *outBinArr = intInversion(*outBinArr, NumBit);
 	*CurSearchBit += NumBit;
 }
 
@@ -82,7 +60,7 @@ outTree HuffmanNode2::getVal(unsigned long long* curSearchBit, unsigned char* by
 		return Val;
 	}
 	unsigned short outBin = 0;
-	getBit(curSearchBit, byteArray, 1, &outBin, false);
+	getBit(curSearchBit, byteArray, 1, &outBin);
 	if (outBin == 0) {
 		return bit0->getVal(curSearchBit, byteArray);
 	}
@@ -150,6 +128,7 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 	unsigned int unResizeImageSize = 0;
 	unsigned char samplingX = 0;
 	unsigned char samplingY = 0;
+	unsigned int DefineRestartInterval = 0;
 
 	if (SOI != bp->convertUCHARtoShort())return nullptr;
 
@@ -221,31 +200,31 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 				}
 				s[nf].Tqn = bp->getChar();
 			}
-			unsigned short sx = 0;
-			unsigned short sy = 0;
+			unsigned short sx = sof0para.X;
+			unsigned short sy = sof0para.Y;
 			if (samplingX == 1 && samplingY == 1) {//4:4:4
-				sx = sof0para.X / 8 * 8 + 8;
-				sy = sof0para.Y / 8 * 8 + 8;
+				if (sx % 8 != 0)sx = sx / 8 * 8 + 8;
+				if (sy % 8 != 0)sy = sy / 8 * 8 + 8;
 			}
 			if (samplingX == 1 && samplingY == 2) {//4:4:0
-				sx = sof0para.X / 8 * 8 + 8;
-				sy = sof0para.Y / 16 * 16 + 16;
+				if (sx % 8 != 0)sx = sx / 8 * 8 + 8;
+				if (sy % 16 != 0)sy = sy / 16 * 16 + 16;
 			}
 			if (samplingX == 2 && samplingY == 1) {//4:2:2
-				sx = sof0para.X / 16 * 16 + 16;
-				sy = sof0para.Y / 8 * 8 + 8;
+				if (sx % 16 != 0)sx = sx / 16 * 16 + 16;
+				if (sy % 8 != 0)sy = sy / 8 * 8 + 8;
 			}
 			if (samplingX == 2 && samplingY == 2) {//4:2:0
-				sx = sof0para.X / 16 * 16 + 16;
-				sy = sof0para.Y / 16 * 16 + 16;
+				if (sx % 16 != 0)sx = sx / 16 * 16 + 16;
+				if (sy % 16 != 0)sy = sy / 16 * 16 + 16;
 			}
 			if (samplingX == 4 && samplingY == 1) {//4:1:1
-				sx = sof0para.X / 32 * 32 + 32;
-				sy = sof0para.Y / 8 * 8 + 8;
+				if (sx % 32 != 0)sx = sx / 32 * 32 + 32;
+				if (sy % 8 != 0)sy = sy / 8 * 8 + 8;
 			}
 			if (samplingX == 4 && samplingY == 2) {//4:1:0
-				sx = sof0para.X / 32 * 32 + 32;
-				sy = sof0para.Y / 16 * 16 + 16;
+				if (sx % 32 != 0)sx = sx / 32 * 32 + 32;
+				if (sy % 16 != 0)sy = sy / 16 * 16 + 16;
 			}
 			unResizeImageSize = sx * 3 * sy;
 			unResizeImage = new short[unResizeImageSize];
@@ -285,7 +264,6 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 			if (!eoi)return nullptr;
 			bp->setIndex(imageSt);
 			compImage = new unsigned char[cnt];
-			compSize = cnt;
 			cnt = 0;
 			//圧縮イメージ格納
 			while (bp->checkEOF()) {
@@ -299,11 +277,22 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 					if (0x00 != tt) {
 						f = false;
 					}
+					if (0xd0 <= tt && tt <= 0xd7) {
+						compImage[cnt++] = t;
+						compImage[cnt++] = tt;
+						f = false;
+					}
 				}
 				if (f)
 					compImage[cnt++] = t;
 			}
 			break;
+		}
+		if (DRI == marker) {
+			unsigned short len = bp->convertUCHARtoShort() - 2;
+			if (len == 0)continue;
+			DefineRestartInterval = bp->convertUCHARtoShort();
+			continue;
 		}
 		//上記マーカー以外スキップ
 		unsigned short len = bp->convertUCHARtoShort() - 2;
@@ -311,7 +300,7 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 	} while (bp->checkEOF());
 	if (!eoi)return nullptr;
 
-	decompressHuffman(unResizeImage, compImage, unResizeImageSize, samplingX, samplingY);
+	decompressHuffman(unResizeImage, compImage, unResizeImageSize, samplingX, samplingY, DefineRestartInterval);
 
 
 
@@ -361,29 +350,29 @@ void JPGLoader::createSign(signSet* sig, unsigned char* L, unsigned char* V, uns
 }
 
 void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned int size,
-	unsigned char samplingX, unsigned char samplingY) {
+	unsigned char samplingX, unsigned char samplingY, unsigned short dri) {
 
 	unsigned char indexS[10] = {};
-	unsigned char indexSize = 0;
+	unsigned char mcuSize = 0;
 	if (samplingX * samplingY == 1) {//4:4:4
-		indexSize = 3;
+		mcuSize = 3;
 		unsigned char ind[3] = { 0,1,2 };
-		memcpy(indexS, ind, indexSize);
+		memcpy(indexS, ind, mcuSize);
 	}
 	if (samplingX * samplingY == 2) {//4:4:0 4:2:2
-		indexSize = 4;
+		mcuSize = 4;
 		unsigned char ind[4] = { 0,0,1,2 };
-		memcpy(indexS, ind, indexSize);
+		memcpy(indexS, ind, mcuSize);
 	}
 	if (samplingX * samplingY == 4) {//4:2:0 4:1:1
-		indexSize = 6;
+		mcuSize = 6;
 		unsigned char ind[6] = { 0,0,0,0,1,2 };
-		memcpy(indexS, ind, indexSize);
+		memcpy(indexS, ind, mcuSize);
 	}
 	if (samplingX * samplingY == 8) {//4:1:0
-		indexSize = 10;
+		mcuSize = 10;
 		unsigned char ind[10] = { 0,0,0,0,0,0,0,0,1,2 };
-		memcpy(indexS, ind, indexSize);
+		memcpy(indexS, ind, mcuSize);
 	}
 
 	unsigned short decompTmp[64] = {};
@@ -395,12 +384,12 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 	unsigned int sosIndex = -1;
 	unsigned int dcIndex = 0;
 	unsigned int acIndex = 0;
-	//bitInversion(comp, compSize);
+	unsigned int mcuCnt = 0;
 	int dc = 0;
 	int ac = 0;
 	while (decompIndex < size) {
 		if (decompTmpIndex == 0) {
-			sosIndex = ++sosIndex % indexSize;
+			sosIndex = ++sosIndex % mcuSize;
 			dcIndex = sospara.sosC[indexS[sosIndex]].Tdn;
 			acIndex = sospara.sosC[indexS[sosIndex]].Tan;
 			val = htreeDC[dcIndex]->getVal(&curSearchBit, comp);
@@ -408,7 +397,7 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 			short bit = 0;
 			if (val.valBit > 0) {
 				unsigned short outBit = 0;
-				getBit(&curSearchBit, comp, val.valBit, &outBit, false);
+				getBit(&curSearchBit, comp, val.valBit, &outBit);
 				if ((outBit >> (val.valBit - 1)) == 0) {
 					bit = (~outBit & bitMask[val.valBit]) * -1;
 				}
@@ -424,7 +413,7 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 
 			if (val.valBit > 0) {
 				unsigned short outBit = 0;
-				getBit(&curSearchBit, comp, val.valBit, &outBit, false);
+				getBit(&curSearchBit, comp, val.valBit, &outBit);
 				for (unsigned char len = 0; len < val.runlength; len++) {
 					decompTmp[decompTmpIndex++] = 0;
 					ac++;
@@ -456,17 +445,26 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 				}
 			}
 		}
+		if (sosIndex == mcuSize - 1 && decompTmpIndex == 64) {
+			mcuCnt++;
+			if (mcuCnt == dri) {
+				//リスタート処理を書く
 
+				//マーカー分スキップ
+				if (curSearchBit % 8 != 0)curSearchBit = curSearchBit / 8 * 8 + 8;
+				curSearchBit += 16;
+				mcuCnt = 0;
+			}
+		}
 		if (decompTmpIndex == 64) {
 			int loop = 1;
-			if (indexS[sosIndex] != 0)loop = indexSize - 2;
+			if (indexS[sosIndex] != 0)loop = mcuSize - 2;
 			for (int i = 0; i < loop; i++) {
 				memcpy(&decomp[decompIndex], decompTmp, sizeof(short) * 64);
 				decompIndex += 64;
 			}
 			decompTmpIndex = 0;
 		}
-
 	}
 	int j = 0;
 }
