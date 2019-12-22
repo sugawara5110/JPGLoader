@@ -535,10 +535,13 @@ void JPGLoader::zigzagScan(short* decomp, unsigned char* zigIndex, unsigned int 
 	unsigned int zIndex = 0;
 	short* zigArr = new short[decompSize];
 	memcpy(zigArr, decomp, sizeof(short) * decompSize);
+	unsigned int z64 = 0;
 
 	for (unsigned int i = 0; i < decompSize; i++) {
 		zIndex = zIndex % 64;
-		decomp[i] = zigArr[zigIndex[zIndex++]];
+		decomp[i] = zigArr[zigIndex[zIndex] + z64];
+		if (zIndex == 63)z64 += 64;
+		zIndex++;
 	}
 	delete[] zigArr;
 }
@@ -598,10 +601,25 @@ void JPGLoader::inverseDiscreteCosineTransfer(short* decomp, unsigned int size) 
 	}
 }
 
+static int max(int a, int b) {
+	if (a > b)
+		return a;
+	else
+		return b;
+}
+static int min(int a, int b) {
+	if (a < b)
+		return a;
+	else
+		return b;
+}
 void JPGLoader::decodeYCrCbtoRGB(RGB& dst, YCrCb& src) {
-	dst.R = ((unsigned char)src.Y + 128) + (unsigned char)(1.402f * (src.Cr - 128.0f));
-	dst.G = ((unsigned char)src.Y + 128) - (unsigned char)(0.34414f * (src.Cb - 128.0f) - 0.71414f * (src.Cr - 128.0f));
-	dst.B = ((unsigned char)src.Y + 128) + (unsigned char)(1.772f * (src.Cb - 128.0f));
+	int G = ((int)src.Y + 128) + (int)(1.402f * (src.Cr - 128.0f));
+	int R = ((int)src.Y + 128) - (int)(0.34414f * (src.Cb - 128.0f) - 0.71414f * (src.Cr - 128.0f));
+	int B = ((int)src.Y + 128) + (int)(1.772f * (src.Cb - 128.0f));
+	dst.R = max(min(R, 255), 0);
+	dst.G = max(min(G, 255), 0);
+	dst.B = max(min(B, 255), 0);
 }
 
 void JPGLoader::decodePixel(unsigned char* pix, short* decomp,
