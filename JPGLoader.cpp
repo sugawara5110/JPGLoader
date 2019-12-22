@@ -554,7 +554,8 @@ void JPGLoader::inverseQuantization(short* decomp, unsigned int decompSize,
 		if (qIndex == 0) {
 			sofIndex = ++sofIndex % mcuSize;
 		}
-		decomp[i] *= dqpara[sof0para.sofC[componentIndex[sofIndex]].Tqn].Qn0[qIndex];
+		unsigned char tqn = sof0para.sofC[componentIndex[sofIndex]].Tqn;
+		decomp[i] *= dqpara[tqn].Qn0[qIndex];
 		qIndex++;
 	}
 }
@@ -577,12 +578,12 @@ static void inverseDCT(short* dst, short* src) {
 				for (int j = 0; j < 8; j++) {
 					int srcIndex = j * 8 + i;
 					ds1 += C(i) * C(j) * src[srcIndex] *
-						cos(((2 * x + 1) * i * pi) / 16) *
-						cos(((2 * y + 1) * j * pi) / 16);
+						cos((((double)2 * x + 1) * i * pi) / 16) *
+						cos((((double)2 * y + 1) * j * pi) / 16);
 				}
 				ds += ds1;
 			}
-			dst[dstIndex] = (short)ds;
+			dst[dstIndex] = (short)ds / 4;
 		}
 	}
 }
@@ -607,23 +608,31 @@ void JPGLoader::decodePixel(unsigned char* pix, short* decomp,
 	unsigned char samplingX, unsigned char samplingY,
 	unsigned int width, unsigned int height) {
 
-	unsigned int pIndex = 0;
+	unsigned int mcuSize = 64 * 3;
+	unsigned int mcuIndex = 0;
+	unsigned int dIndex = 0;
 	for (unsigned int y = 0; y < height; y += 8) {
 		for (unsigned int x = 0; x < width * 3; x += 24) {
 			for (unsigned int y0 = 0; y0 < 8; y0++) {
 				for (unsigned int x0 = 0; x0 < 8; x0++) {
-					unsigned int dIndexY = (y + y0) * width * 3 + x + x0;
-					unsigned int dIndexR = (y + y0) * width * 3 + x + x0 + 8;
-					unsigned int dIndexB = (y + y0) * width * 3 + x + x0 + 16;
+					unsigned int pIndexR = (y + y0) * width * 3 + x + x0 * 3;
+					unsigned int pIndexG = (y + y0) * width * 3 + x + x0 * 3 + 1;
+					unsigned int pIndexB = (y + y0) * width * 3 + x + x0 * 3 + 2;
 					YCrCb ycc;
-					ycc.Y = (float)decomp[dIndexY];
-					ycc.Cr = (float)decomp[dIndexR];
-					ycc.Cb = (float)decomp[dIndexB];
+					unsigned int ddIndex = mcuSize * mcuIndex + dIndex;
+					ycc.Y = (float)decomp[mcuSize * mcuIndex + dIndex];
+					ycc.Cr = (float)decomp[mcuSize * mcuIndex + dIndex + 64];
+					ycc.Cb = (float)decomp[mcuSize * mcuIndex + dIndex + 128];
+					dIndex++;
+					if (dIndex == 64) {
+						mcuIndex++;
+						dIndex = 0;
+					}
 					RGB rgb;
 					decodeYCrCbtoRGB(rgb, ycc);
-					pix[pIndex++] = rgb.R;
-					pix[pIndex++] = rgb.G;
-					pix[pIndex++] = rgb.B;
+					pix[pIndexR] = rgb.R;
+					pix[pIndexG] = rgb.G;
+					pix[pIndexB] = rgb.B;
 				}
 			}
 		}
