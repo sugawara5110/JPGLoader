@@ -326,10 +326,10 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 	}
 
 	decompressHuffman(unResizeImage, compImage, unResizeImageSize, mcuSize, indexS, DefineRestartInterval);
+	inverseQuantization(unResizeImage, unResizeImageSize, mcuSize, indexS);
 	unsigned char zigIndex[64];
 	createZigzagIndex(zigIndex);
 	zigzagScan(unResizeImage, zigIndex, unResizeImageSize);
-	inverseQuantization(unResizeImage, unResizeImageSize, mcuSize, indexS);
 	inverseDiscreteCosineTransfer(unResizeImage, unResizeImageSize);
 	unsigned char* pix = new unsigned char[unResizeImageSize];
 	decodePixel(pix, unResizeImage, samplingX, samplingY, unResizeImageSizeX, unResizeImageSizeY);
@@ -385,7 +385,7 @@ void JPGLoader::createSign(signSet* sig, unsigned char* L, unsigned char* V, uns
 void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned int decompSize,
 	unsigned char mcuSize, unsigned char* componentIndex, unsigned short dri) {
 
-	unsigned short decompTmp[64] = {};
+	short decompTmp[64] = {};
 	unsigned int decompTmpIndex = 0;
 	unsigned long long curSearchBit = 0;
 	unsigned int decompIndex = 0;
@@ -394,7 +394,7 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 	unsigned int dcIndex = 0;
 	unsigned int acIndex = 0;
 	unsigned int mcuCnt = 0;
-	short prevDc = 0;
+	short prevDc[3] = { 0,0,0 };
 	int dc = 0;
 	int ac = 0;
 	while (decompIndex < decompSize) {
@@ -415,7 +415,8 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 					bit = outBit;
 				}
 			}
-			decompTmp[decompTmpIndex++] = prevDc = bit + prevDc;
+			decompTmp[decompTmpIndex++] = bit + prevDc[componentIndex[sosIndex]];
+			prevDc[componentIndex[sosIndex]] = bit + prevDc[componentIndex[sosIndex]];
 			dc++;
 		}
 		else {
@@ -459,7 +460,8 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 			mcuCnt++;
 			if (mcuCnt == dri) {
 				//DC差分用変数リセット
-				prevDc = 0;
+				for (int i = 0; i < mcuSize; i++)
+					prevDc[i] = 0;
 				//マーカー分スキップ, マーカー直前で数bit半端になる場合はbyte境界でそろえる
 				if (curSearchBit % 8 != 0)curSearchBit = curSearchBit / 8 * 8 + 8;
 				curSearchBit += 16;
@@ -614,8 +616,8 @@ static int min(int a, int b) {
 		return b;
 }
 void JPGLoader::decodeYCrCbtoRGB(RGB& dst, YCrCb& src) {
-	int G = ((int)src.Y + 128) + (int)(1.402f * (src.Cr - 128.0f));
-	int R = ((int)src.Y + 128) - (int)(0.34414f * (src.Cb - 128.0f) - 0.71414f * (src.Cr - 128.0f));
+	int R = ((int)src.Y + 128) + (int)(1.402f * (src.Cr - 128.0f));
+	int G = ((int)src.Y + 128) - (int)(0.34414f * (src.Cb - 128.0f) - 0.71414f * (src.Cr - 128.0f));
 	int B = ((int)src.Y + 128) + (int)(1.772f * (src.Cb - 128.0f));
 	dst.R = max(min(R, 255), 0);
 	dst.G = max(min(G, 255), 0);
