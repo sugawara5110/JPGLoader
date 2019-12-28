@@ -560,7 +560,7 @@ void JPGLoader::inverseQuantization(short* decomp, unsigned int decompSize,
 			sofIndex = ++sofIndex % mcuSize;
 		}
 		unsigned char tqn = sof0para.sofC[componentIndex[sofIndex]].Tqn;
-		decomp[i] *= dqpara[tqn].Qn0[qIndex];
+		decomp[i] *= dqpara[tqn].Qn0[qIndex] * 8;//*8‚Í‚í‚©‚ç‚ñ
 		qIndex++;
 	}
 }
@@ -615,10 +615,25 @@ static int min(int a, int b) {
 	else
 		return b;
 }
-void JPGLoader::decodeYCrCbtoRGB(RGB& dst, YCrCb& src) {
-	int R = ((int)src.Y + 128) + (int)(1.402f * (src.Cr - 128.0f));
+void JPGLoader::decodeYCbCrtoRGB(RGB& dst, YCbCr& src) {
+	//src.Y = max(min(src.Y, 235), 16);
+	//src.Cb = max(min(src.Cb, 240), 16);
+	//src.Cr = max(min(src.Cr, 240), 16);
+	/*int R = (int)(1.164f * (src.Y - 16.0f) + 1.596f * (src.Cr - 128.0f));
+	int G = (int)(1.164f * (src.Y - 16.0f) - 0.391f * (src.Cb - 128.0f) - 0.813f * (src.Cr - 128.0f));
+	int B = (int)(1.164f * (src.Y - 16.0f) + 2.018f * (src.Cb - 128.0f));*/
+	/*int R = ((int)src.Y + 128) + (int)(1.402f * (src.Cr - 128.0f));
 	int G = ((int)src.Y + 128) - (int)(0.34414f * (src.Cb - 128.0f) - 0.71414f * (src.Cr - 128.0f));
-	int B = ((int)src.Y + 128) + (int)(1.772f * (src.Cb - 128.0f));
+	int B = ((int)src.Y + 128) + (int)(1.772f * (src.Cb - 128.0f));*/
+	int R = (int)(src.Y + (1.4020f * src.Cr));
+	int G = (int)(src.Y - (0.34414f * src.Cb) - (0.71414f * src.Cr));
+	int B = (int)(src.Y + (1.772f * src.Cb));
+	/*int R = (298 * ((int)src.Y - 16) + 409 * ((int)src.Cr - 128) + 128);
+	R = R >> 8;
+	int G = (298 * ((int)src.Y - 16) - 100 * ((int)src.Cb - 128) - 208 * ((int)src.Cr - 128) + 128);
+	G = G >> 8;
+	int B = (298 * ((int)src.Y - 16) + 516 * ((int)src.Cr - 128) + 128);
+	B = B >> 8;*/
 	dst.R = max(min(R, 255), 0);
 	dst.G = max(min(G, 255), 0);
 	dst.B = max(min(B, 255), 0);
@@ -638,18 +653,18 @@ void JPGLoader::decodePixel(unsigned char* pix, short* decomp,
 					unsigned int pIndexR = (y + y0) * width * 3 + x + x0 * 3;
 					unsigned int pIndexG = (y + y0) * width * 3 + x + x0 * 3 + 1;
 					unsigned int pIndexB = (y + y0) * width * 3 + x + x0 * 3 + 2;
-					YCrCb ycc;
+					YCbCr ycc;
 					unsigned int ddIndex = mcuSize * mcuIndex + dIndex;
 					ycc.Y = (float)decomp[mcuSize * mcuIndex + dIndex];
-					ycc.Cr = (float)decomp[mcuSize * mcuIndex + dIndex + 64];
-					ycc.Cb = (float)decomp[mcuSize * mcuIndex + dIndex + 128];
+					ycc.Cb = (float)decomp[mcuSize * mcuIndex + dIndex + 64];
+					ycc.Cr = (float)decomp[mcuSize * mcuIndex + dIndex + 128];
 					dIndex++;
 					if (dIndex == 64) {
 						mcuIndex++;
 						dIndex = 0;
 					}
 					RGB rgb;
-					decodeYCrCbtoRGB(rgb, ycc);
+					decodeYCbCrtoRGB(rgb, ycc);
 					pix[pIndexR] = rgb.R;
 					pix[pIndexG] = rgb.G;
 					pix[pIndexB] = rgb.B;

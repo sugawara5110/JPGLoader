@@ -115,7 +115,7 @@ private:
 
 	class DQTpara { //4種類固定,SOFから参照される
 	public:
-		unsigned char Pqn = 0;//上位4bit 量子化テーブル制度 0:8bit, 1:16bit  通常8bit
+		unsigned char Pqn = 0;//上位4bit 量子化テーブル精度 0:8bit, 1:16bit  通常8bit
 		unsigned char Tqn = 0;//下位4bit 量子化テーブル番号 0~3まで
 		unsigned char Qn0[64] = {};//量子化テーブル 64個の量子化係数 Pqn=0の場合
 		unsigned short Qn1[64] = {};//量子化テーブル 64個の量子化係数 Pqn=1の場合
@@ -194,7 +194,7 @@ private:
 	};
 	SOSpara sospara;
 
-	struct YCrCb {
+	struct YCbCr {
 		float Y = 0.0f;//輝度
 		float Cb = 0.0f;//青方向の色相
 		float Cr = 0.0f;//赤方向の色相
@@ -214,7 +214,7 @@ private:
 	void inverseQuantization(short* decomp, unsigned int decompSize,
 		unsigned char mcuSize, unsigned char* componentIndex);//逆量子化
 	void inverseDiscreteCosineTransfer(short* decomp, unsigned int size);//逆離散コサイン変換(ﾟ∀ﾟ)
-	void decodeYCrCbtoRGB(RGB& dst, YCrCb& src);
+	void decodeYCbCrtoRGB(RGB& dst, YCbCr& src);
 	void decodePixel(unsigned char* pix, short* decomp,
 		unsigned char samplingX, unsigned char samplingY,
 		unsigned int width, unsigned int height);
