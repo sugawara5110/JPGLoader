@@ -560,7 +560,7 @@ void JPGLoader::inverseQuantization(short* decomp, unsigned int decompSize,
 			sofIndex = ++sofIndex % mcuSize;
 		}
 		unsigned char tqn = sof0para.sofC[componentIndex[sofIndex]].Tqn;
-		decomp[i] *= dqpara[tqn].Qn0[qIndex] * 8;//*8‚Í‚í‚©‚ç‚ñ
+		decomp[i] *= dqpara[tqn].Qn0[qIndex];
 		qIndex++;
 	}
 }
@@ -584,7 +584,7 @@ static void inverseDCT(short* dst, short* src) {
 					int srcIndex = j * 8 + i;
 					ds1 += C(i) * C(j) * src[srcIndex] *
 						cos((((double)2 * x + 1) * i * pi) / 16) *
-						cos((((double)2 * y + 1) * j * pi) / 16);
+						cos((((double)2 * y + 1) * j * pi) / 16) * 8.0;
 				}
 				ds += ds1;
 			}
@@ -616,24 +616,31 @@ static int min(int a, int b) {
 		return b;
 }
 void JPGLoader::decodeYCbCrtoRGB(RGB& dst, YCbCr& src) {
-	//src.Y = max(min(src.Y, 235), 16);
-	//src.Cb = max(min(src.Cb, 240), 16);
-	//src.Cr = max(min(src.Cr, 240), 16);
-	/*int R = (int)(1.164f * (src.Y - 16.0f) + 1.596f * (src.Cr - 128.0f));
-	int G = (int)(1.164f * (src.Y - 16.0f) - 0.391f * (src.Cb - 128.0f) - 0.813f * (src.Cr - 128.0f));
-	int B = (int)(1.164f * (src.Y - 16.0f) + 2.018f * (src.Cb - 128.0f));*/
-	/*int R = ((int)src.Y + 128) + (int)(1.402f * (src.Cr - 128.0f));
-	int G = ((int)src.Y + 128) - (int)(0.34414f * (src.Cb - 128.0f) - 0.71414f * (src.Cr - 128.0f));
-	int B = ((int)src.Y + 128) + (int)(1.772f * (src.Cb - 128.0f));*/
-	int R = (int)(src.Y + (1.4020f * src.Cr));
-	int G = (int)(src.Y - (0.34414f * src.Cb) - (0.71414f * src.Cr));
-	int B = (int)(src.Y + (1.772f * src.Cb));
-	/*int R = (298 * ((int)src.Y - 16) + 409 * ((int)src.Cr - 128) + 128);
-	R = R >> 8;
-	int G = (298 * ((int)src.Y - 16) - 100 * ((int)src.Cb - 128) - 208 * ((int)src.Cr - 128) + 128);
-	G = G >> 8;
-	int B = (298 * ((int)src.Y - 16) + 516 * ((int)src.Cr - 128) + 128);
-	B = B >> 8;*/
+	int Y = (int)src.Y;
+	int Cb = (int)src.Cb;
+	int Cr = (int)src.Cr;
+
+	//’l‚Ì’²® -1024~1024 ¨ -128~127
+	Y = Y >> 3;
+	Cb = Cb >> 3;
+	Cr = Cr >> 3;
+
+	float fY = (float)max(min(Y, 127), -128);
+	float fCb = (float)max(min(Cb, 127), -128);
+	float fCr = (float)max(min(Cr, 127), -128);
+
+	float fConstRed = 0.299f;
+	float fConstGreen = 0.587f;
+	float fConstBlue = 0.114f;
+
+	int R = (int)(fCr * (2 - 2 * fConstRed) + fY);
+	int B = (int)(fCb * (2 - 2 * fConstBlue) + fY);
+	int G = (int)((fY - fConstBlue * B - fConstRed * R) / 0.587f);
+
+	R += 128;
+	B += 128;
+	G += 128;
+
 	dst.R = max(min(R, 255), 0);
 	dst.G = max(min(G, 255), 0);
 	dst.B = max(min(B, 255), 0);
