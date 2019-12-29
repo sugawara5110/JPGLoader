@@ -650,31 +650,45 @@ void JPGLoader::decodePixel(unsigned char* pix, short* decomp,
 	unsigned char samplingX, unsigned char samplingY,
 	unsigned int width, unsigned int height) {
 
-	unsigned int mcuSize = 64 * 3;
+	const unsigned int blockWid = 8;
+	unsigned int elemSize = samplingX * samplingY;
+	unsigned int mcuSize = 64 * 3 * elemSize;
 	unsigned int mcuIndex = 0;
 	unsigned int dIndex = 0;
-	for (unsigned int y = 0; y < height; y += 8) {
-		for (unsigned int x = 0; x < width * 3; x += 24) {
-			for (unsigned int y0 = 0; y0 < 8; y0++) {
-				for (unsigned int x0 = 0; x0 < 8; x0++) {
-					unsigned int pIndexR = (y + y0) * width * 3 + x + x0 * 3;
-					unsigned int pIndexG = (y + y0) * width * 3 + x + x0 * 3 + 1;
-					unsigned int pIndexB = (y + y0) * width * 3 + x + x0 * 3 + 2;
-					YCbCr ycc;
-					unsigned int ddIndex = mcuSize * mcuIndex + dIndex;
-					ycc.Y = (float)decomp[mcuSize * mcuIndex + dIndex];
-					ycc.Cb = (float)decomp[mcuSize * mcuIndex + dIndex + 64];
-					ycc.Cr = (float)decomp[mcuSize * mcuIndex + dIndex + 128];
-					dIndex++;
-					if (dIndex == 64) {
-						mcuIndex++;
-						dIndex = 0;
+
+	for (unsigned int y = 0; y < height; y += (samplingY * blockWid)) {
+		for (unsigned int x = 0; x < width * 3; x += (samplingX * blockWid * 3)) {
+
+			unsigned int elemIndex = 0;
+			for (unsigned int sy = 0; sy < samplingY; sy++) {
+				for (unsigned int sx = 0; sx < samplingX; sx++) {
+
+					for (unsigned int by = 0; by < blockWid; by++) {
+						for (unsigned int bx = 0; bx < blockWid; bx++) {
+							unsigned int pIndex = (y + sy * blockWid + by) * width * 3 + x + sx * blockWid * 3 + bx * 3;
+							unsigned int pIndexR = pIndex;
+							unsigned int pIndexG = pIndex + 1;
+							unsigned int pIndexB = pIndex + 2;
+							YCbCr ycc;
+							unsigned int ddIndex = mcuSize * mcuIndex + elemIndex * 64 + dIndex;
+							ycc.Y = (float)decomp[ddIndex];
+							ycc.Cb = (float)decomp[ddIndex + 64 * elemSize];
+							ycc.Cr = (float)decomp[ddIndex + 128 * elemSize];
+							dIndex++;
+							if (dIndex == 64) {
+								if (++elemIndex >= elemSize) {
+									elemIndex = 0;
+									mcuIndex++;
+								}
+								dIndex = 0;
+							}
+							RGB rgb;
+							decodeYCbCrtoRGB(rgb, ycc);
+							pix[pIndexR] = rgb.R;
+							pix[pIndexG] = rgb.G;
+							pix[pIndexB] = rgb.B;
+						}
 					}
-					RGB rgb;
-					decodeYCbCrtoRGB(rgb, ycc);
-					pix[pIndexR] = rgb.R;
-					pix[pIndexG] = rgb.G;
-					pix[pIndexB] = rgb.B;
 				}
 			}
 		}
