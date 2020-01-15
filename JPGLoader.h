@@ -8,6 +8,7 @@
 #define Class_JPGLoader_Header
 
 #include <stdio.h>
+#include <string.h>
 
 class JPGLoader;
 class HuffmanTree2;
@@ -70,10 +71,10 @@ private:
 		unsigned int Size = 0;
 		bytePointer() {}
 	public:
-		bytePointer(unsigned int size, FILE* fp) {
+		bytePointer(unsigned int size, unsigned char* byt) {
 			byte = new unsigned char[size];
-			fread(byte, sizeof(unsigned char), size, fp);
 			Size = size;
+			memcpy(byte, byt, size);
 		}
 		~bytePointer() {
 			delete[] byte;
@@ -224,6 +225,7 @@ private:
 
 public:
 	unsigned char* loadJPG(char* pass, unsigned int outWid, unsigned int outHei);
+	unsigned char* loadJpgInByteArray(unsigned char* byteArray, unsigned int size, unsigned int outWid, unsigned int outHei);
 };
 
 #endif

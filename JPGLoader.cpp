@@ -96,8 +96,19 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 		count++;
 	}
 	fseek(fp, 0, SEEK_SET);//Å‰‚É–ß‚·
-	bytePointer* bp = new bytePointer(count, fp);
+	unsigned char* byte = new unsigned char[count];
+	fread(byte, sizeof(unsigned char), count, fp);
 	fclose(fp);
+	unsigned char* ret = loadJpgInByteArray(byte, count, outWid, outHei);
+	delete[] byte;
+	byte = nullptr;
+
+	return ret;
+}
+
+unsigned char* JPGLoader::loadJpgInByteArray(unsigned char* byteArray, unsigned int size, unsigned int outWid, unsigned int outHei) {
+
+	bytePointer* bp = new bytePointer(size, byteArray);
 
 	const unsigned int numPixel = outWid * imageNumChannel * outHei;
 	unsigned char* image = new unsigned char[numPixel];//ŠO•”‚ÅŠJ•ú
