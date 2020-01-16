@@ -108,6 +108,11 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 
 unsigned char* JPGLoader::loadJpgInByteArray(unsigned char* byteArray, unsigned int size, unsigned int outWid, unsigned int outHei) {
 
+	static const unsigned char signature[2] = { 0xff,0xd8 };
+	for (int i = 0; i < 2; i++) {
+		if (byteArray[i] != signature[i])return nullptr;
+	}
+
 	bytePointer* bp = new bytePointer(size, byteArray);
 
 	const unsigned int numPixel = outWid * imageNumChannel * outHei;
