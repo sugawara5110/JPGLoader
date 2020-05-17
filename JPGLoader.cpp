@@ -86,9 +86,21 @@ outTree HuffmanTree2::getVal(unsigned long long* curSearchBit, unsigned char* by
 	return hn.getVal(curSearchBit, byteArray);
 }
 
-unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int outHei) {
+double JPGLoader::IdctTable[64][64] = {};
+bool JPGLoader::IdctTableCreate = false;
+
+static void setEr(char* errorMessage, char* inMessage) {
+	if (errorMessage) {
+		int size = (int)strlen(inMessage) + 1;
+		memcpy(errorMessage, inMessage, size);
+	}
+}
+unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int outHei,
+	char* errorMessage) {
+
 	FILE* fp = fopen(pass, "rb");
 	if (fp == NULL) {
+		setEr(errorMessage, "File read error");
 		return nullptr;
 	}
 	unsigned int count = 0;
@@ -96,28 +108,29 @@ unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int 
 		count++;
 	}
 	fseek(fp, 0, SEEK_SET);//最初に戻す
-	unsigned char* byte = new unsigned char[count];
-	fread(byte, sizeof(unsigned char), count, fp);
+	std::unique_ptr<unsigned char[]> byte = std::make_unique<unsigned char[]>(count);
+	fread(byte.get(), sizeof(unsigned char), count, fp);
 	fclose(fp);
-	unsigned char* ret = loadJpgInByteArray(byte, count, outWid, outHei);
-	delete[] byte;
-	byte = nullptr;
+	unsigned char* ret = loadJpgInByteArray(byte.get(), count, outWid, outHei, errorMessage);
 
 	return ret;
 }
 
-unsigned char* JPGLoader::loadJpgInByteArray(unsigned char* byteArray, unsigned int size, unsigned int outWid, unsigned int outHei) {
+unsigned char* JPGLoader::loadJpgInByteArray(unsigned char* byteArray, unsigned int byteSize,
+	unsigned int outWid, unsigned int outHei, char* errorMessage) {
 
 	static const unsigned char signature[2] = { 0xff,0xd8 };
 	for (int i = 0; i < 2; i++) {
-		if (byteArray[i] != signature[i])return nullptr;
+		if (byteArray[i] != signature[i]) {
+			setEr(errorMessage, "This file is not a jpg");
+			return nullptr;
+		}
 	}
 
-	bytePointer* bp = new bytePointer(size, byteArray);
+	std::unique_ptr<bytePointer> bp = std::make_unique<bytePointer>();
+	bp->setPointer(byteSize, byteArray);
 
-	const unsigned int numPixel = outWid * imageNumChannel * outHei;
-	unsigned char* image = new unsigned char[numPixel];//外部で開放
-	short* unResizeImage = nullptr;
+	std::unique_ptr<short[]> unResizeImage = nullptr;
 
 	//---jpg構造---//
 	//SOI
@@ -132,19 +145,17 @@ unsigned char* JPGLoader::loadJpgInByteArray(unsigned char* byteArray, unsigned 
 	DHTpara dhpara[8] = {};
 	unsigned int dqparaIndex = 0;
 	unsigned int dhparaIndex = 0;
-	unsigned char* compImage = nullptr;
+	std::unique_ptr<unsigned char[]> compImage = nullptr;
 	for (int i = 0; i < 4; i++) {
-		htreeDC[i] = new HuffmanTree2();
-		htreeAC[i] = new HuffmanTree2();
+		htreeDC[i] = std::make_unique<HuffmanTree2>();
+		htreeAC[i] = std::make_unique<HuffmanTree2>();
 	}
 	unsigned int unResizeImageSize = 0;
-	unsigned int unResizeImageSizeX = 0;
-	unsigned int unResizeImageSizeY = 0;
 	unsigned char samplingX = 0;
 	unsigned char samplingY = 0;
 	unsigned int DefineRestartInterval = 0;
 
-	if (SOI != bp->convertUCHARtoShort())return nullptr;
+	bp->convertUCHARtoShort();//SOIの分スキップ
 
 	bool eoi = false;
 	do {
@@ -195,7 +206,11 @@ unsigned char* JPGLoader::loadJpgInByteArray(unsigned char* byteArray, unsigned 
 			} while (len > 0);
 			continue;
 		}
-		if (SOF0 == marker) {
+		if (SOF0 <= marker && marker <= SOF15) {
+			if (marker > SOF0) {
+				setEr(errorMessage, "Not supported except Baseline");
+				return nullptr;
+			}
 			unsigned short len = bp->convertUCHARtoShort() - 2;
 			if (len == 0)continue;
 			sof0para.P = bp->getChar();
@@ -243,8 +258,8 @@ unsigned char* JPGLoader::loadJpgInByteArray(unsigned char* byteArray, unsigned 
 			unResizeImageSize = sx * 3 * sy;
 			unResizeImageSizeX = sx;
 			unResizeImageSizeY = sy;
-			unResizeImage = new short[unResizeImageSize];
-			memset(unResizeImage, 0, sizeof(short) * unResizeImageSize);
+			unResizeImage = std::make_unique<short[]>(unResizeImageSize);
+			memset(unResizeImage.get(), 0, sizeof(short) * unResizeImageSize);
 			continue;
 		}
 		if (SOS == marker) {
@@ -281,7 +296,7 @@ unsigned char* JPGLoader::loadJpgInByteArray(unsigned char* byteArray, unsigned 
 			}
 			if (!eoi)return nullptr;
 			bp->setIndex(imageSt);
-			compImage = new unsigned char[cnt];
+			compImage = std::make_unique<unsigned char[]>(cnt);
 			cnt = 0;
 			//圧縮イメージ格納
 			while (bp->checkEOF()) {
@@ -341,34 +356,32 @@ unsigned char* JPGLoader::loadJpgInByteArray(unsigned char* byteArray, unsigned 
 		memcpy(indexS, ind, mcuSize);
 	}
 
-	decompressHuffman(unResizeImage, compImage, unResizeImageSize, mcuSize, indexS, DefineRestartInterval);
-	inverseQuantization(unResizeImage, unResizeImageSize, mcuSize, indexS);
-	unsigned char zigIndex[64];
-	createZigzagIndex(zigIndex);
-	zigzagScan(unResizeImage, zigIndex, unResizeImageSize);
-	inverseDiscreteCosineTransfer(unResizeImage, unResizeImageSize);
-	unsigned char* pix = new unsigned char[unResizeImageSize];
-	decodePixel(pix, unResizeImage, samplingX, samplingY, unResizeImageSizeX, unResizeImageSizeY);
-	resize(image, pix, outWid, outHei, unResizeImageSizeX, 3, unResizeImageSizeY);
-
-	delete[] unResizeImage;
-	unResizeImage = nullptr;
-	delete[] pix;
-	pix = nullptr;
-	for (int i = 0; i < 4; i++) {
-		if (htreeDC[i]) {
-			delete htreeDC[i];
-			htreeDC[i] = nullptr;
-		}
-		if (htreeAC[i]) {
-			delete htreeAC[i];
-			htreeAC[i] = nullptr;
-		}
+	decompressHuffman(unResizeImage.get(), compImage.get(), unResizeImageSize, mcuSize, indexS, DefineRestartInterval);
+	inverseQuantization(unResizeImage.get(), unResizeImageSize, mcuSize, indexS);
+	unsigned char zigIndex[64]{
+		0,  1,  5,  6,  14, 15, 27, 28,
+	  2,  4,  7,  13, 16, 26, 29, 42,
+	  3,  8,  12, 17, 25, 30, 41, 43,
+	  9,  11, 18, 24, 31, 40, 44, 53,
+	  10, 19, 23, 32, 39, 45, 52, 54,
+	  20, 22, 33, 38, 46, 51, 55, 60,
+	  21, 34, 37, 47, 50, 56, 59, 61,
+	  35, 36, 48, 49, 57, 58, 62, 63
+	};
+	zigzagScan(unResizeImage.get(), zigIndex, unResizeImageSize);
+	createIdctTable();
+	inverseDiscreteCosineTransfer(unResizeImage.get(), unResizeImageSize);
+	std::unique_ptr<unsigned char[]> pix = std::make_unique<unsigned char[]>(unResizeImageSize);
+	decodePixel(pix.get(), unResizeImage.get(), samplingX, samplingY, unResizeImageSizeX, unResizeImageSizeY);
+	if (outWid <= 0 || outHei <= 0) {
+		outWid = unResizeImageSizeX;
+		outHei = unResizeImageSizeY;
 	}
-	delete bp;
-	bp = nullptr;
-	delete[] compImage;
-	compImage = nullptr;
+	const unsigned int numPixel = outWid * imageNumChannel * outHei;
+	unsigned char* image = new unsigned char[numPixel];//外部で開放
+	resize(image, pix.get(), outWid, outHei, unResizeImageSizeX, 3, unResizeImageSizeY);
+
+	setEr(errorMessage, "OK");
 
 	return image;
 }
@@ -496,59 +509,6 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 	}
 }
 
-void JPGLoader::createZigzagIndex(unsigned char* zigIndex) {
-	unsigned int zig[64] = {};
-	int zIndex = 0;
-	int x = 0;
-	int y = 0;
-	int index = 0;
-	zig[zIndex++] = 0;
-	bool down = true;
-	while (zIndex < 64) {
-		if (down) {
-			x++;
-			zig[zIndex++] = y * 8 + x;
-			while (x > 0) {
-				x--;
-				y++;
-				zig[zIndex++] = y * 8 + x;
-			}
-			if (x == 0 && y == 7) {
-				down = false;
-			}
-			else {
-				y++;
-				zig[zIndex++] = y * 8 + x;
-				while (y > 0) {
-					x++;
-					y--;
-					zig[zIndex++] = y * 8 + x;
-				}
-			}
-		}
-		else {
-			x++;
-			zig[zIndex++] = y * 8 + x;
-			if (x == 7 && y == 7)break;
-			while (x < 7) {
-				x++;
-				y--;
-				zig[zIndex++] = y * 8 + x;
-			}
-			y++;
-			zig[zIndex++] = y * 8 + x;
-			while (y < 7) {
-				x--;
-				y++;
-				zig[zIndex++] = y * 8 + x;
-			}
-		}
-	}
-	for (int i = 0; i < 64; i++) {
-		zigIndex[zig[i]] = i;
-	}
-}
-
 void JPGLoader::zigzagScan(short* decomp, unsigned char* zigIndex, unsigned int decompSize) {
 	unsigned int zIndex = 0;
 	short* zigArr = new short[decompSize];
@@ -581,33 +541,45 @@ void JPGLoader::inverseQuantization(short* decomp, unsigned int decompSize,
 	}
 }
 
-static double C(int index) {
-	double ret = 0.0;
-	const double inverseRoute2 = 1 / 1.41421356237;
-	if (index == 0)ret = inverseRoute2;
-	else ret = 1;
-	return ret;
-}
-static void inverseDCT(short* dst, short* src) {
-	const double pi = 3.141592653589793;
+void JPGLoader::createIdctTable() {
+	if (IdctTableCreate)return;
+	const double pi = 3.141592654;
+	const double inverseRoute2 = 0.707106781;
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
 			int dstIndex = y * 8 + x;
 			double ds = 0.0;
 			for (int i = 0; i < 8; i++) {
-				double ds1 = 0.0;
 				for (int j = 0; j < 8; j++) {
 					int srcIndex = j * 8 + i;
-					ds1 += C(i) * C(j) * src[srcIndex] *
+					double ci = (i == 0) ? inverseRoute2 : 1;
+					double cj = (j == 0) ? inverseRoute2 : 1;
+					IdctTable[dstIndex][srcIndex] = ci * cj *
 						cos((((double)2 * x + 1) * i * pi) / 16) *
-						cos((((double)2 * y + 1) * j * pi) / 16) * 8.0;
+						cos((((double)2 * y + 1) * j * pi) / 16);
 				}
-				ds += ds1;
 			}
-			dst[dstIndex] = (short)ds / 4;
+		}
+	}
+	IdctTableCreate = true;
+}
+
+void JPGLoader::inverseDCT(short* dst, short* src) {
+	for (int y = 0; y < 8; y++) {
+		for (int x = 0; x < 8; x++) {
+			int dstIndex = y * 8 + x;
+			double ds = 0.0;
+			for (int i = 0; i < 8; i++) {
+				for (int j = 0; j < 8; j++) {
+					int srcIndex = j * 8 + i;
+					ds += src[srcIndex] * IdctTable[dstIndex][srcIndex];
+				}
+			}
+			dst[dstIndex] = (short)ds * 2;
 		}
 	}
 }
+
 void JPGLoader::inverseDiscreteCosineTransfer(short* decomp, unsigned int size) {
 	unsigned int loop = size / 64;
 	unsigned int index = 0;

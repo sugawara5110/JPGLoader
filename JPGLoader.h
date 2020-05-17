@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include<memory>
 
 class JPGLoader;
 class HuffmanTree2;
@@ -56,6 +57,7 @@ private:
 	const unsigned short DQT = 0xffdb;//量子化テーブル定義
 	const unsigned short DHT = 0xffc4;//ハフマンテーブル定義
 	const unsigned short SOF0 = 0xffc0;//フレームヘッダー
+	const unsigned short SOF15 = 0xffcf;//フレームヘッダー
 	const unsigned short SOS = 0xffda;//スキャンヘッダー
 	const unsigned short EOI = 0xffd9;//エンド
 	const unsigned short DRI = 0xffdd;//リスタート定義
@@ -69,9 +71,8 @@ private:
 		unsigned char* byte = nullptr;
 		unsigned int index = 0;
 		unsigned int Size = 0;
-		bytePointer() {}
 	public:
-		bytePointer(unsigned int size, unsigned char* byt) {
+		void setPointer(unsigned int size, unsigned char* byt) {
 			byte = new unsigned char[size];
 			Size = size;
 			memcpy(byte, byt, size);
@@ -143,8 +144,8 @@ private:
 			V = nullptr;
 		}
 	};
-	HuffmanTree2* htreeDC[4];
-	HuffmanTree2* htreeAC[4];
+	std::unique_ptr<HuffmanTree2> htreeDC[4] = {};
+	std::unique_ptr<HuffmanTree2> htreeAC[4] = {};
 	void createSign(signSet* sig, unsigned char* L, unsigned char* V, unsigned char Tcn);
 
 	class SOF0component {
@@ -207,13 +208,19 @@ private:
 	};
 
 	const unsigned int imageNumChannel = 4;
+	static double IdctTable[64][64];
+	static bool IdctTableCreate;
 
+	unsigned int unResizeImageSizeX = 0;
+	unsigned int unResizeImageSizeY = 0;
+
+	void createIdctTable();
 	void decompressHuffman(short* decomp, unsigned char* comp, unsigned int decompSize,
 		unsigned char mcuSize, unsigned char* componentIndex, unsigned short dri);
-	void createZigzagIndex(unsigned char* zigIndex);
 	void zigzagScan(short* decomp, unsigned char* zigIndex, unsigned int decompSize);
 	void inverseQuantization(short* decomp, unsigned int decompSize,
 		unsigned char mcuSize, unsigned char* componentIndex);//逆量子化
+	void inverseDCT(short* dst, short* src);
 	void inverseDiscreteCosineTransfer(short* decomp, unsigned int size);//逆離散コサイン変換(ﾟ∀ﾟ)
 	void decodeYCbCrtoRGB(RGB& dst, YCbCr& src);
 	void decodePixel(unsigned char* pix, short* decomp,
@@ -224,8 +231,14 @@ private:
 		unsigned int srcWid, unsigned int srcNumChannel, unsigned int srcHei);
 
 public:
-	unsigned char* loadJPG(char* pass, unsigned int outWid, unsigned int outHei);
-	unsigned char* loadJpgInByteArray(unsigned char* byteArray, unsigned int size, unsigned int outWid, unsigned int outHei);
+	unsigned char* loadJPG(char* pass, unsigned int outWid, unsigned int outHei,
+		char* errorMessage = nullptr);
+
+	unsigned char* loadJpgInByteArray(unsigned char* byteArray, unsigned int byteSize,
+		unsigned int outWid, unsigned int outHei, char* errorMessage = nullptr);
+
+	unsigned int getSrcWidth() { return unResizeImageSizeX; }
+	unsigned int getSrcHeight() { return unResizeImageSizeY; }
 };
 
 #endif
