@@ -9,7 +9,7 @@
 
 #include <stdio.h>
 #include <string.h>
-#include<memory>
+#include <memory>
 
 class JPGLoader;
 class HuffmanTree2;
@@ -213,6 +213,19 @@ private:
 
 	unsigned int unResizeImageSizeX = 0;
 	unsigned int unResizeImageSizeY = 0;
+
+	inline int Max(int a, int b) {
+		if (a > b)
+			return a;
+		else
+			return b;
+	}
+	inline int Min(int a, int b) {
+		if (a < b)
+			return a;
+		else
+			return b;
+	}
 
 	void createIdctTable();
 	void decompressHuffman(short* decomp, unsigned char* comp, unsigned int decompSize,

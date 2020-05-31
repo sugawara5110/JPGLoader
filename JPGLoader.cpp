@@ -142,9 +142,7 @@ unsigned char* JPGLoader::loadJpgInByteArray(unsigned char* byteArray, unsigned 
 	//マーカー2byte
 	//レングス長2byte 内容: セグメントパラメーターbyte数 + 2byte
 	//セグメントパラメーター
-	DHTpara dhpara[8] = {};
 	unsigned int dqparaIndex = 0;
-	unsigned int dhparaIndex = 0;
 	std::unique_ptr<unsigned char[]> compImage = nullptr;
 	for (int i = 0; i < 4; i++) {
 		htreeDC[i] = std::make_unique<HuffmanTree2>();
@@ -185,23 +183,23 @@ unsigned char* JPGLoader::loadJpgInByteArray(unsigned char* byteArray, unsigned 
 
 			do {
 				unsigned char pt = bp->getChar();
-				DHTpara* d = &dhpara[dhparaIndex];
-				d->Tcn = (pt >> 4) & 0xf;
-				d->Thn = pt & 0xf;
-				memcpy(d->L, bp->getPointer(16), 16);
+				DHTpara d;
+				d.Tcn = (pt >> 4) & 0xf;
+				d.Thn = pt & 0xf;
+				memcpy(d.L, bp->getPointer(16), 16);
 				int lcnt = 0;
-				for (int l = 0; l < 16; l++)lcnt += d->L[l];
-				d->V = new unsigned char[lcnt];
-				memcpy(d->V, bp->getPointer(lcnt), lcnt);
+				for (int l = 0; l < 16; l++)lcnt += d.L[l];
+				d.V = new unsigned char[lcnt];
+				memcpy(d.V, bp->getPointer(lcnt), lcnt);
 				len -= (17 + lcnt);
 				//符号生成
 				signSet* si = new signSet[lcnt];
-				createSign(si, d->L, d->V, d->Tcn);
+				createSign(si, d.L, d.V, d.Tcn);
 				//ツリー生成
-				if (d->Tcn == 0)
-					htreeDC[d->Thn]->createTree(si, lcnt);
+				if (d.Tcn == 0)
+					htreeDC[d.Thn]->createTree(si, lcnt);
 				else
-					htreeAC[d->Thn]->createTree(si, lcnt);
+					htreeAC[d.Thn]->createTree(si, lcnt);
 				delete[] si;
 			} while (len > 0);
 			continue;
@@ -591,18 +589,6 @@ void JPGLoader::inverseDiscreteCosineTransfer(short* decomp, unsigned int size) 
 	}
 }
 
-static int max(int a, int b) {
-	if (a > b)
-		return a;
-	else
-		return b;
-}
-static int min(int a, int b) {
-	if (a < b)
-		return a;
-	else
-		return b;
-}
 void JPGLoader::decodeYCbCrtoRGB(RGB& dst, YCbCr& src) {
 	int Y = (int)src.Y;
 	int Cb = (int)src.Cb;
@@ -613,9 +599,9 @@ void JPGLoader::decodeYCbCrtoRGB(RGB& dst, YCbCr& src) {
 	Cb = Cb >> 3;
 	Cr = Cr >> 3;
 
-	float fY = (float)max(min(Y, 127), -128);
-	float fCb = (float)max(min(Cb, 127), -128);
-	float fCr = (float)max(min(Cr, 127), -128);
+	float fY = (float)Max(Min(Y, 127), -128);
+	float fCb = (float)Max(Min(Cb, 127), -128);
+	float fCr = (float)Max(Min(Cr, 127), -128);
 
 	float fConstRed = 0.299f;
 	float fConstGreen = 0.587f;
@@ -629,9 +615,9 @@ void JPGLoader::decodeYCbCrtoRGB(RGB& dst, YCbCr& src) {
 	B += 128;
 	G += 128;
 
-	dst.R = max(min(R, 255), 0);
-	dst.G = max(min(G, 255), 0);
-	dst.B = max(min(B, 255), 0);
+	dst.R = Max(Min(R, 255), 0);
+	dst.G = Max(Min(G, 255), 0);
+	dst.B = Max(Min(B, 255), 0);
 }
 
 void JPGLoader::decodePixel(unsigned char* pix, short* decomp,
