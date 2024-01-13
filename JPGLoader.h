@@ -11,47 +11,40 @@
 #include <string.h>
 #include <memory>
 
-class JPGLoader;
-class HuffmanTree2;
-
-struct signSet {
-	unsigned short sign = 0;
-	unsigned char numBit = 0;
-	unsigned char valBit = 0;
-	unsigned char runlength = 0;
-};
-
-struct outTree {
-	unsigned char valBit = 0;
-	unsigned char runlength = 0;//ZRL,EOBも有り
-};
-
-class HuffmanNode2 {
-
-private:
-	friend HuffmanTree2;
-	HuffmanNode2* bit0 = nullptr;
-	HuffmanNode2* bit1 = nullptr;
-	outTree Val = {};
-
-	void setVal(outTree val, unsigned short bitArr, unsigned char numBit);
-	outTree getVal(unsigned long long* curSearchBit, unsigned char* byteArray);
-	~HuffmanNode2();
-};
-
-class HuffmanTree2 {
-
-private:
-	friend JPGLoader;
-	HuffmanNode2 hn;
-
-	void createTree(signSet* sigArr, unsigned int arraySize);
-	outTree getVal(unsigned long long* curSearchBit, unsigned char* byteArray);
-};
-
 class JPGLoader {
 
 private:
+	struct signSet {
+		unsigned short sign = 0;
+		unsigned char numBit = 0;
+		unsigned char valBit = 0;
+		unsigned char runlength = 0;
+	};
+
+	struct outTree {
+		unsigned char valBit = 0;
+		unsigned char runlength = 0;//ZRL,EOBも有り
+	};
+
+	class HuffmanNode {
+	public:
+		HuffmanNode* bit0 = nullptr;
+		HuffmanNode* bit1 = nullptr;
+		outTree Val = {};
+
+		void setVal(outTree val, unsigned short bitArr, unsigned char numBit);
+		outTree getVal(unsigned long long* curSearchBit, unsigned char* byteArray);
+		~HuffmanNode();
+	};
+
+	class HuffmanTree {
+	public:
+		HuffmanNode hn;
+
+		void createTree(signSet* sigArr, unsigned int arraySize);
+		outTree getVal(unsigned long long* curSearchBit, unsigned char* byteArray);
+	};
+
 	//マーカー 0xffがマーカー始まり, 0xff00はffを通常の数値として使う場合
 	const unsigned short SOI = 0xffd8;//スタート
 	const unsigned short DQT = 0xffdb;//量子化テーブル定義
@@ -144,8 +137,8 @@ private:
 			V = nullptr;
 		}
 	};
-	std::unique_ptr<HuffmanTree2> htreeDC[4] = {};
-	std::unique_ptr<HuffmanTree2> htreeAC[4] = {};
+	std::unique_ptr<HuffmanTree> htreeDC[4] = {};
+	std::unique_ptr<HuffmanTree> htreeAC[4] = {};
 	void createSign(signSet* sig, unsigned char* L, unsigned char* V, unsigned char Tcn);
 
 	class SOF0component {
@@ -194,7 +187,7 @@ private:
 			sosC = nullptr;
 		}
 	};
-	SOSpara sospara;
+	std::unique_ptr<SOSpara> sospara = {};
 
 	struct YCbCr {
 		float Y = 0.0f;//輝度

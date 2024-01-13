@@ -9,53 +9,56 @@
 #include <string.h>
 #include <math.h>
 
-static const int bitMask[]{
-	0b0000000000000000,
-	0b0000000000000001,
-	0b0000000000000011,
-	0b0000000000000111,
-	0b0000000000001111,
-	0b0000000000011111,
-	0b0000000000111111,
-	0b0000000001111111,
-	0b0000000011111111,
-	0b0000000111111111,
-	0b0000001111111111,
-	0b0000011111111111,
-	0b0000111111111111,
-	0b0001111111111111,
-	0b0011111111111111,
-	0b0111111111111111,
-	0b1111111111111111
-};
+namespace {
 
-static const int byteArrayNumbit = 8;
+	const int bitMask[]{
+		0b0000000000000000,
+		0b0000000000000001,
+		0b0000000000000011,
+		0b0000000000000111,
+		0b0000000000001111,
+		0b0000000000011111,
+		0b0000000000111111,
+		0b0000000001111111,
+		0b0000000011111111,
+		0b0000000111111111,
+		0b0000001111111111,
+		0b0000011111111111,
+		0b0000111111111111,
+		0b0001111111111111,
+		0b0011111111111111,
+		0b0111111111111111,
+		0b1111111111111111
+	};
 
-static void getBit(unsigned long long* CurSearchBit, unsigned char* byteArray, unsigned char NumBit, unsigned short* outBinArr) {
-	unsigned int baind = (unsigned int)(*CurSearchBit / byteArrayNumbit);//配列インデックス
-	unsigned int bitPos = (unsigned int)(*CurSearchBit % byteArrayNumbit);//要素内bit位置インデックス
-	unsigned char shiftBit = byteArrayNumbit * 3 - NumBit - bitPos;
-	*outBinArr = (((byteArray[baind] << 16) | (byteArray[baind + 1] << 8) |
-		byteArray[baind + 2]) >> shiftBit)& bitMask[NumBit];
-	*CurSearchBit += NumBit;
+	const int byteArrayNumbit = 8;
+
+	void getBit(unsigned long long* CurSearchBit, unsigned char* byteArray, unsigned char NumBit, unsigned short* outBinArr) {
+		unsigned int baind = (unsigned int)(*CurSearchBit / byteArrayNumbit);//配列インデックス
+		unsigned int bitPos = (unsigned int)(*CurSearchBit % byteArrayNumbit);//要素内bit位置インデックス
+		unsigned char shiftBit = byteArrayNumbit * 3 - NumBit - bitPos;
+		*outBinArr = (((byteArray[baind] << 16) | (byteArray[baind + 1] << 8) |
+			byteArray[baind + 2]) >> shiftBit) & bitMask[NumBit];
+		*CurSearchBit += NumBit;
+	}
 }
 
-void HuffmanNode2::setVal(outTree val, unsigned short bitArr, unsigned char numBit) {
+void JPGLoader::HuffmanNode::setVal(outTree val, unsigned short bitArr, unsigned char numBit) {
 	if (numBit == 0) {//葉まで到達したら値を格納
 		Val = val;
 		return;
 	}
 	if (bitArr >> (numBit - 1) == 0) {
-		if (!bit0)bit0 = new HuffmanNode2();
+		if (!bit0)bit0 = new HuffmanNode();
 		bit0->setVal(val, bitArr & bitMask[numBit - 1], numBit - 1);
 	}
 	else {
-		if (!bit1)bit1 = new HuffmanNode2();
+		if (!bit1)bit1 = new HuffmanNode();
 		bit1->setVal(val, bitArr & bitMask[numBit - 1], numBit - 1);
 	}
 }
 
-outTree HuffmanNode2::getVal(unsigned long long* curSearchBit, unsigned char* byteArray) {
+JPGLoader::outTree JPGLoader::HuffmanNode::getVal(unsigned long long* curSearchBit, unsigned char* byteArray) {
 	if (!bit0 && !bit1) {//葉まで到達したら値を返す
 		return Val;
 	}
@@ -69,20 +72,20 @@ outTree HuffmanNode2::getVal(unsigned long long* curSearchBit, unsigned char* by
 	}
 }
 
-HuffmanNode2::~HuffmanNode2() {
+JPGLoader::HuffmanNode::~HuffmanNode() {
 	if (bit0)delete bit0;
 	bit0 = nullptr;
 	if (bit1)delete bit1;
 	bit1 = nullptr;
 }
 
-void HuffmanTree2::createTree(signSet* sigArr, unsigned int arraySize) {
+void JPGLoader::HuffmanTree::createTree(signSet* sigArr, unsigned int arraySize) {
 	for (unsigned int i = 0; i < arraySize; i++) {
 		hn.setVal({ sigArr[i].valBit,sigArr[i].runlength }, sigArr[i].sign, sigArr[i].numBit);
 	}
 }
 
-outTree HuffmanTree2::getVal(unsigned long long* curSearchBit, unsigned char* byteArray) {
+JPGLoader::outTree JPGLoader::HuffmanTree::getVal(unsigned long long* curSearchBit, unsigned char* byteArray) {
 	return hn.getVal(curSearchBit, byteArray);
 }
 
@@ -145,8 +148,8 @@ unsigned char* JPGLoader::loadJpgInByteArray(unsigned char* byteArray, unsigned 
 	unsigned int dqparaIndex = 0;
 	std::unique_ptr<unsigned char[]> compImage = nullptr;
 	for (int i = 0; i < 4; i++) {
-		htreeDC[i] = std::make_unique<HuffmanTree2>();
-		htreeAC[i] = std::make_unique<HuffmanTree2>();
+		htreeDC[i] = std::make_unique<HuffmanTree>();
+		htreeAC[i] = std::make_unique<HuffmanTree>();
 	}
 	unsigned int unResizeImageSize = 0;
 	unsigned char samplingX = 0;
@@ -261,22 +264,24 @@ unsigned char* JPGLoader::loadJpgInByteArray(unsigned char* byteArray, unsigned 
 			continue;
 		}
 		if (SOS == marker) {
+			sospara = std::make_unique<SOSpara>();
+			SOSpara* spara = sospara.get();
 			unsigned short len = bp->convertUCHARtoShort() - 2;
 			if (len == 0)continue;
-			sospara.Ns = bp->getChar();
-			sospara.sosC = new SOScomponent[sospara.Ns];
-			SOScomponent* s = sospara.sosC;
-			for (unsigned char ns = 0; ns < sospara.Ns; ns++) {
+			spara->Ns = bp->getChar();
+			spara->sosC = new SOScomponent[spara->Ns];
+			SOScomponent* s = spara->sosC;
+			for (unsigned char ns = 0; ns < spara->Ns; ns++) {
 				s[ns].Csn = bp->getChar();
 				unsigned char pt = bp->getChar();
 				s[ns].Tdn = (pt >> 4) & 0xf;
 				s[ns].Tan = pt & 0xf;
 			}
-			sospara.Ss = bp->getChar();
-			sospara.Se = bp->getChar();
+			spara->Ss = bp->getChar();
+			spara->Se = bp->getChar();
 			unsigned char pt = bp->getChar();
-			sospara.Ah = (pt >> 4) & 0xf;
-			sospara.Al = pt & 0xf;
+			spara->Ah = (pt >> 4) & 0xf;
+			spara->Al = pt & 0xf;
 			//この直後イメージデータ
 			unsigned int imageSt = bp->getIndex();
 			//サイズカウント
@@ -427,8 +432,8 @@ void JPGLoader::decompressHuffman(short* decomp, unsigned char* comp, unsigned i
 	while (decompIndex < decompSize) {
 		if (decompTmpIndex == 0) {
 			sosIndex = ++sosIndex % mcuSize;
-			dcIndex = sospara.sosC[componentIndex[sosIndex]].Tdn;
-			acIndex = sospara.sosC[componentIndex[sosIndex]].Tan;
+			dcIndex = sospara.get()->sosC[componentIndex[sosIndex]].Tdn;
+			acIndex = sospara.get()->sosC[componentIndex[sosIndex]].Tan;
 			val = htreeDC[dcIndex]->getVal(&curSearchBit, comp);
 
 			short bit = 0;
