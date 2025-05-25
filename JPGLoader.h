@@ -237,7 +237,7 @@ private:
 		unsigned int srcWid, unsigned int srcNumChannel, unsigned int srcHei);
 
 public:
-	unsigned char* loadJPG(char* pass, unsigned int outWid, unsigned int outHei,
+	unsigned char* loadJPG(char* Path, unsigned int outWid, unsigned int outHei,
 		char* errorMessage = nullptr);
 
 	unsigned char* loadJpgInByteArray(unsigned char* byteArray, unsigned int byteSize,

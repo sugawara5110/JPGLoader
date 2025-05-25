@@ -98,10 +98,10 @@ static void setEr(char* errorMessage, char* inMessage) {
 		memcpy(errorMessage, inMessage, size);
 	}
 }
-unsigned char* JPGLoader::loadJPG(char* pass, unsigned int outWid, unsigned int outHei,
+unsigned char* JPGLoader::loadJPG(char* Path, unsigned int outWid, unsigned int outHei,
 	char* errorMessage) {
 
-	FILE* fp = fopen(pass, "rb");
+	FILE* fp = fopen(Path, "rb");
 	if (fp == NULL) {
 		setEr(errorMessage, "File read error");
 		return nullptr;
